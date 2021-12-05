@@ -162,7 +162,7 @@ static struct sock *inet_lookup_listener_slow(const struct hlist_head *head,
 }
 
 /* Optimize the common listener case. */
-struct sock *__inet_lookup_listener(struct inet_hashinfo *hashinfo,
+struct sock *__inet_lookup_listener(struct inet_hashinfo *hashinfo,         // inet_hashinfo是个全局遍历维护有 ehash lhash bhash
 				    const __be32 daddr, const unsigned short hnum,
 				    const int dif)
 {
@@ -171,7 +171,7 @@ struct sock *__inet_lookup_listener(struct inet_hashinfo *hashinfo,
 
 	read_lock(&hashinfo->lhash_lock);
 	head = &hashinfo->listening_hash[inet_lhashfn(hnum)];
-	if (!hlist_empty(head)) {
+	if (!hlist_empty(head)) {                                               // 遍历lhash
 		const struct inet_sock *inet = inet_sk((sk = __sk_head(head)));
 
 		if (inet->num == hnum && !sk->sk_node.next &&

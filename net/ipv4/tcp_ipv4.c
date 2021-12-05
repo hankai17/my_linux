@@ -1246,14 +1246,14 @@ static struct timewait_sock_ops tcp_timewait_sock_ops = {
 	.twsk_destructor= tcp_twsk_destructor,
 };
 
-int tcp_v4_conn_request(struct sock *sk, struct sk_buff *skb)
+int tcp_v4_conn_request(struct sock *sk, struct sk_buff *skb)               // 收到syn
 {
 	struct inet_request_sock *ireq;
 	struct tcp_options_received tmp_opt;
 	struct request_sock *req;
 	__be32 saddr = skb->nh.iph->saddr;
 	__be32 daddr = skb->nh.iph->daddr;
-	__u32 isn = TCP_SKB_CB(skb)->when;
+	__u32 isn = TCP_SKB_CB(skb)->when;                                      // 命中tw 且tw判断该包合法
 	struct dst_entry *dst = NULL;
 #ifdef CONFIG_SYN_COOKIES
 	int want_cookie = 0;
@@ -1263,16 +1263,16 @@ int tcp_v4_conn_request(struct sock *sk, struct sk_buff *skb)
 
 	/* Never answer to SYNs send to broadcast or multicast */
 	if (((struct rtable *)skb->dst)->rt_flags &
-	    (RTCF_BROADCAST | RTCF_MULTICAST))
+	    (RTCF_BROADCAST | RTCF_MULTICAST))                                  // 丢弃广播/多播包
 		goto drop;
 
 	/* TW buckets are converted to open requests without
 	 * limitations, they conserve resources and peer is
 	 * evidently real one.
 	 */
-	if (inet_csk_reqsk_queue_is_full(sk) && !isn) {
+	if (inet_csk_reqsk_queue_is_full(sk) && !isn) {                         // 判断半连接队列是否满 如果满且处于非tw态则丢弃该包
 #ifdef CONFIG_SYN_COOKIES
-		if (sysctl_tcp_syncookies) {
+		if (sysctl_tcp_syncookies) {                                        // (如果设置了SYN Cookie即使半连接队列满也会继续进行 因为SYN Cookie不需要新分配半连接队列 详细的SYN Cookie请google)  
 			want_cookie = 1;
 		} else
 #endif
@@ -1284,8 +1284,8 @@ int tcp_v4_conn_request(struct sock *sk, struct sk_buff *skb)
 	 * clogging syn queue with openreqs with exponentially increasing
 	 * timeout.
 	 */
-	if (sk_acceptq_is_full(sk) && inet_csk_reqsk_queue_young(sk) > 1)
-		goto drop;
+	if (sk_acceptq_is_full(sk) && inet_csk_reqsk_queue_young(sk) > 1)       // 判断backlog队列是否满 满且qlen_young大于一(syn队列中已经有足够多的(这里不包括重传的syn)请求了)就丢个包 		
+        goto drop;
 
 	req = reqsk_alloc(&tcp_request_sock_ops);
 	if (!req)
@@ -1295,11 +1295,11 @@ int tcp_v4_conn_request(struct sock *sk, struct sk_buff *skb)
 	tcp_rsk(req)->af_specific = &tcp_request_sock_ipv4_ops;
 #endif
 
-	tcp_clear_options(&tmp_opt);
+	tcp_clear_options(&tmp_opt);                                            // 对tmp_opt进行初始化tcp的一些选项信息(比如mss/窗口扩大因子等等) 
 	tmp_opt.mss_clamp = 536;
 	tmp_opt.user_mss  = tcp_sk(sk)->rx_opt.user_mss;
 
-	tcp_parse_options(skb, &tmp_opt, 0);
+	tcp_parse_options(skb, &tmp_opt, 0);                                    // 对端的tcp_options_received进行解析 并对本端得tcp_options_received进行初始化
 
 	if (want_cookie) {
 		tcp_clear_options(&tmp_opt);
@@ -1317,7 +1317,7 @@ int tcp_v4_conn_request(struct sock *sk, struct sk_buff *skb)
 	}
 	tmp_opt.tstamp_ok = tmp_opt.saw_tstamp;
 
-	tcp_openreq_init(req, &tmp_opt, skb);
+	tcp_openreq_init(req, &tmp_opt, skb);                                   // 新建一个inet_request_sock(ireq) 加入到半连接队列
 
 	if (security_inet_conn_request(sk, skb, req))
 		goto drop_and_free;
@@ -1325,7 +1325,7 @@ int tcp_v4_conn_request(struct sock *sk, struct sk_buff *skb)
 	ireq = inet_rsk(req);
 	ireq->loc_addr = daddr;
 	ireq->rmt_addr = saddr;
-	ireq->opt = tcp_v4_save_options(sk, skb);
+	ireq->opt = tcp_v4_save_options(sk, skb);                               // 保存对端的tcp opt
 	if (!want_cookie)
 		TCP_ECN_create_request(req, skb->h.th);
 
@@ -1334,7 +1334,7 @@ int tcp_v4_conn_request(struct sock *sk, struct sk_buff *skb)
 		syn_flood_warning(skb);
 #endif
 		isn = cookie_v4_init_sequence(sk, skb, &req->mss);
-	} else if (!isn) {
+	} else if (!isn) {                                        -------新连接syn处理--------tw_syn略过该流程(因为处理过了)两者唯一不同是一个tw校验了seq这是个比时间戳更硬核的东西------
 		struct inet_peer *peer = NULL;
 
 		/* VJ's idea. We save last timestamp seen
@@ -1350,9 +1350,9 @@ int tcp_v4_conn_request(struct sock *sk, struct sk_buff *skb)
 		    tcp_death_row.sysctl_tw_recycle &&
 		    (dst = inet_csk_route_req(sk, req)) != NULL &&
 		    (peer = rt_get_peer((struct rtable *)dst)) != NULL &&
-		    peer->v4daddr == saddr) {
-			if (xtime.tv_sec < peer->tcp_ts_stamp + TCP_PAWS_MSL &&
-			    (s32)(peer->tcp_ts - req->ts_recent) >
+		    peer->v4daddr == saddr) {                                       // 如果开启了recycle 且有时间戳且能查到对端的路由信息
+			if (xtime.tv_sec < peer->tcp_ts_stamp + TCP_PAWS_MSL &&         // 当前时间跟对端最近一次被更新时间小于PAWS_MSL(60s跟tw的2MSL一样) 即60s内访问过
+			    (s32)(peer->tcp_ts - req->ts_recent) >                      // 且新来时间戳(这里是ts_recent)小且差值超过了重放窗口1s(差的离谱 明显是坏包)
 							TCP_PAWS_WINDOW) {
 				NET_INC_STATS_BH(LINUX_MIB_PAWSPASSIVEREJECTED);
 				dst_release(dst);
@@ -1380,8 +1380,8 @@ int tcp_v4_conn_request(struct sock *sk, struct sk_buff *skb)
 			goto drop_and_free;
 		}
 
-		isn = tcp_v4_init_sequence(skb);
-	}
+		isn = tcp_v4_init_sequence(skb);                                    // 计算合适的isn
+	}                                                       ----------------------------------------------------------------------------------------------
 	tcp_rsk(req)->snt_isn = isn;
 
 	if (tcp_v4_send_synack(sk, req, dst))
@@ -1581,7 +1581,7 @@ int tcp_v4_do_rcv(struct sock *sk, struct sk_buff *skb)
 	}
 
 	TCP_CHECK_TIMER(sk);
-	if (tcp_rcv_state_process(sk, skb, skb->h.th, skb->len)) {
+	if (tcp_rcv_state_process(sk, skb, skb->h.th, skb->len)) {                  // 里面处理syn
 		rsk = sk;
 		goto reset;
 	}
@@ -1608,7 +1608,7 @@ csum_err:
  *	From tcp_input.c
  */
 
-int tcp_v4_rcv(struct sk_buff *skb)
+int tcp_v4_rcv(struct sk_buff *skb)                                         // 数据接收开始 软中断上下文中调用 一次只处理一个包
 {
 	struct tcphdr *th;
 	struct sock *sk;
@@ -1647,7 +1647,7 @@ int tcp_v4_rcv(struct sk_buff *skb)
 	TCP_SKB_CB(skb)->flags	 = skb->nh.iph->tos;
 	TCP_SKB_CB(skb)->sacked	 = 0;
 
-	sk = __inet_lookup(&tcp_hashinfo, skb->nh.iph->saddr, th->source,
+	sk = __inet_lookup(&tcp_hashinfo, skb->nh.iph->saddr, th->source,       // 通过四元组先查ehash(包含tw态)再查lhash 拿到sk
 			   skb->nh.iph->daddr, th->dest,
 			   inet_iif(skb));
 
@@ -1655,7 +1655,7 @@ int tcp_v4_rcv(struct sk_buff *skb)
 		goto no_tcp_socket;
 
 process:
-	if (sk->sk_state == TCP_TIME_WAIT)
+	if (sk->sk_state == TCP_TIME_WAIT)                                      // tw态有包过来
 		goto do_time_wait;
 
 	if (!xfrm4_policy_check(sk, XFRM_POLICY_IN, skb))
@@ -1667,9 +1667,9 @@ process:
 
 	skb->dev = NULL;
 
-	bh_lock_sock_nested(sk);
+	bh_lock_sock_nested(sk);                                                // 加大锁
 	ret = 0;
-	if (!sock_owned_by_user(sk)) {
+	if (!sock_owned_by_user(sk)) {                                          // 加锁成功
 #ifdef CONFIG_NET_DMA
 		struct tcp_sock *tp = tcp_sk(sk);
 		if (!tp->ucopy.dma_chan && tp->ucopy.pinned_list)
@@ -1679,11 +1679,11 @@ process:
 		else
 #endif
 		{
-			if (!tcp_prequeue(sk, skb))
-			ret = tcp_v4_do_rcv(sk, skb);
+			if (!tcp_prequeue(sk, skb))                                     // 放入prequeue 失败则放入receive_queue
+			ret = tcp_v4_do_rcv(sk, skb);                                   // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 		}
 	} else
-		sk_add_backlog(sk, skb);
+		sk_add_backlog(sk, skb);                                            // 加大锁失败即上层进程在处理该sock 则放入backlog队列
 	bh_unlock_sock(sk);
 
 	sock_put(sk);
@@ -1722,7 +1722,7 @@ do_time_wait:
 		goto discard_it;
 	}
 	switch (tcp_timewait_state_process(inet_twsk(sk), skb, th)) {
-	case TCP_TW_SYN: {
+	case TCP_TW_SYN: {                                                      // 即time-wait下收到了"合法"(时间戳大 && (seq大 || 时间戳大))的syn包  
 		struct sock *sk2 = inet_lookup_listener(&tcp_hashinfo,
 							skb->nh.iph->daddr,
 							th->dest,

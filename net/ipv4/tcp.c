@@ -1667,7 +1667,7 @@ adjudge_to_death:                                                       // 等�
 				inet_csk_reset_keepalive_timer(sk,
 						tmo - TCP_TIMEWAIT_LEN);
 			} else {
-				tcp_time_wait(sk, TCP_FIN_WAIT2, tmo);                  // 设置fin等待超时回调 跟收到fin转到timewait态用的同一个接口 (fin2直接进入tw)
+				tcp_time_wait(sk, TCP_FIN_WAIT2, tmo);                  // tw定时器场景3: 主动close并收到该fin的ack后 设置fin等待超时回调 跟收到fin转到timewait态用的同一个接口 (fin2直接进入close)
 				goto out;
 			}
 		}

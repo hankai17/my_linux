@@ -1010,7 +1010,7 @@ static inline int tcp_fin_time(const struct sock *sk)
 
 static inline int tcp_paws_check(const struct tcp_options_received *rx_opt, int rst)
 {
-	if ((s32)(rx_opt->rcv_tsval - rx_opt->ts_recent) >= 0)
+	if ((s32)(rx_opt->rcv_tsval - rx_opt->ts_recent) >= 0)              // 新时间戳大则不拒绝
 		return 0;
 	if (xtime.tv_sec >= rx_opt->ts_recent_stamp + TCP_PAWS_24DAYS)
 		return 0;

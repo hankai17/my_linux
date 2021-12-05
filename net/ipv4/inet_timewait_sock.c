@@ -14,7 +14,7 @@
 #include <net/ip.h>
 
 /* Must be called with locally disabled BHs. */
-void __inet_twsk_kill(struct inet_timewait_sock *tw, struct inet_hashinfo *hashinfo)
+void __inet_twsk_kill(struct inet_timewait_sock *tw, struct inet_hashinfo *hashinfo)    // 将tw从 ehash bhash中删除
 {
 	struct inet_bind_hashbucket *bhead;
 	struct inet_bind_bucket *tb;
@@ -140,7 +140,7 @@ rescan:
 	inet_twsk_for_each_inmate(tw, node, &twdr->cells[slot]) {
 		__inet_twsk_del_dead_node(tw);
 		spin_unlock(&twdr->death_lock);
-		__inet_twsk_kill(tw, twdr->hashinfo);
+		__inet_twsk_kill(tw, twdr->hashinfo);                           // 将tw从 ehash bhash中删除
 		inet_twsk_put(tw);
 		killed++;
 		spin_lock(&twdr->death_lock);
@@ -328,7 +328,7 @@ void inet_twsk_schedule(struct inet_timewait_sock *tw,
 
 EXPORT_SYMBOL_GPL(inet_twsk_schedule);
 
-void inet_twdr_twcal_tick(unsigned long data)
+void inet_twdr_twcal_tick(unsigned long data)                   // 短定时器回调(即recycle模式 4种场景)  ?相比长定时器短定时器没有删除端口信息?
 {
 	struct inet_timewait_death_row *twdr;
 	int n, slot;

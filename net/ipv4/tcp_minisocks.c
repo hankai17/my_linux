@@ -43,7 +43,7 @@ struct inet_timewait_death_row tcp_death_row = {                    // 维护所
 	.death_lock	= __SPIN_LOCK_UNLOCKED(tcp_death_row.death_lock),
 	.hashinfo	= &tcp_hashinfo,                                    // 共用全局inet_hashinfo
 	.tw_timer	= TIMER_INITIALIZER(inet_twdr_hangman, 0,           // 长定时器 --> cells(长定时器hash表)         2MSL使用
-                                                                    // 超时回调中删除所有sock 同时也从bind_hash中删除对应的端口
+                                                                    // 超时回调中删除所有sock 同时也从bhash中删除对应的端口
 					    (unsigned long)&tcp_death_row),
 	.twkill_work	= __WORK_INITIALIZER(tcp_death_row.twkill_work,
 					     inet_twdr_twkill_work),
@@ -94,7 +94,7 @@ static __inline__ int tcp_in_window(u32 seq, u32 end_seq, u32 s_win, u32 e_win)
  * to avoid misread sequence numbers, states etc.  --ANK
  */
 enum tcp_tw_status
-tcp_timewait_state_process(struct inet_timewait_sock *tw, struct sk_buff *skb,  // 处于tw状态后再次接收到数据包
+tcp_timewait_state_process(struct inet_timewait_sock *tw, struct sk_buff *skb,  // 处于tw状态后收到数据包 取消相应的定时器
 			   const struct tcphdr *th)
 {
 	struct tcp_timewait_sock *tcptw = tcp_twsk((struct sock *)tw);
@@ -108,11 +108,11 @@ tcp_timewait_state_process(struct inet_timewait_sock *tw, struct sk_buff *skb,  
 		if (tmp_opt.saw_tstamp) {
 			tmp_opt.ts_recent	= tcptw->tw_ts_recent;
 			tmp_opt.ts_recent_stamp	= tcptw->tw_ts_recent_stamp;
-			paws_reject = tcp_paws_check(&tmp_opt, th->rst);
+			paws_reject = tcp_paws_check(&tmp_opt, th->rst);                    // 新来的时间戳小 则置位reject
 		}
 	}
 
-	if (tw->tw_substate == TCP_FIN_WAIT2) {                                     // fin2的定时器到期后tw态 此时收到了对端的包
+	if (tw->tw_substate == TCP_FIN_WAIT2) {                                     // fin2的定时器到期后tw态 此时收到了对端的包?
 		/* Just repeat all the checks of tcp_rcv_state_process() */
 
 		/* Out of window, send ACK */
@@ -233,10 +233,10 @@ kill:
 	   but not fatal yet.
 	 */
 
-	if (th->syn && !th->rst && !th->ack && !paws_reject &&
+	if (th->syn && !th->rst && !th->ack && !paws_reject &&              // 合法syn: 必须是syn 且新来的时间戳大
 	    (after(TCP_SKB_CB(skb)->seq, tcptw->tw_rcv_nxt) ||
-	     (tmp_opt.saw_tstamp &&
-	      (s32)(tcptw->tw_ts_recent - tmp_opt.rcv_tsval) < 0))) {
+	     (tmp_opt.saw_tstamp &&                                                             |                  \
+	      (s32)(tcptw->tw_ts_recent - tmp_opt.rcv_tsval) < 0))) {       // 合法syn:  seq要大于期待的rcv_nxt 或 时间戳大(为什么又检查一遍?)
 		u32 isn = tcptw->tw_snd_nxt + 65535 + 2;
 		if (isn == 0)
 			isn++;
@@ -343,7 +343,7 @@ void tcp_time_wait(struct sock *sk, int state, int timeo)
 				timeo = TCP_TIMEWAIT_LEN;
 		}
 
-		inet_twsk_schedule(tw, &tcp_death_row, timeo,               // 根据timeo进入 长/短定时器
+		inet_twsk_schedule(tw, &tcp_death_row, timeo,               // 根据timeo进入 长/短定时器 定时回调看最前面
 				   TCP_TIMEWAIT_LEN);
 		inet_twsk_put(tw);
 	} else {

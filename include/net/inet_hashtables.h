@@ -392,7 +392,7 @@ static inline struct sock *
 					 ntohs(dport), dif);
 }
 
-static inline struct sock *__inet_lookup(struct inet_hashinfo *hashinfo,
+static inline struct sock *__inet_lookup(struct inet_hashinfo *hashinfo,            // 先查ehash 再查lhash
 					 const __be32 saddr, const __be16 sport,
 					 const __be32 daddr, const __be16 dport,
 					 const int dif)

@@ -233,7 +233,7 @@ static inline int ip_local_deliver_finish(struct sk_buff *skb) //发给我的完
 				}
 				nf_reset(skb);
 			}
-			ret = ipprot->handler(skb); //传输层接收回调
+			ret = ipprot->handler(skb); //传输层接收回调: tcp_v4_recv udp_rcv icmp_rcv igmp_rcv
 			if (ret < 0) {
 				protocol = -ret;
 				goto resubmit;

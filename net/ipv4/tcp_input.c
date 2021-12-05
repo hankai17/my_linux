@@ -2432,9 +2432,9 @@ static inline int tcp_may_raise_cwnd(const struct sock *sk, const int flag)
 static inline int tcp_may_update_window(const struct tcp_sock *tp, const u32 ack,
 					const u32 ack_seq, const u32 nwin)
 {
-	return (after(ack, tp->snd_una) ||
-		after(ack_seq, tp->snd_wl1) ||
-		(ack_seq == tp->snd_wl1 && nwin > tp->snd_wnd));
+	return (after(ack, tp->snd_una) ||                      // 报文中的ack 在在途首包之后 那么需要更新发送窗口
+		after(ack_seq, tp->snd_wl1) ||                      // 报文的seq 在上次引起窗口变化的报文seq之后
+		(ack_seq == tp->snd_wl1 && nwin > tp->snd_wnd));    // 报文的seq... 且报文中的通告窗口大于发送窗口
 }
 
 /* Update our send window.
@@ -2796,22 +2796,22 @@ static int tcp_disordered_ack(const struct sock *sk, const struct sk_buff *skb)
 	u32 ack = TCP_SKB_CB(skb)->ack_seq;
 
 	return (/* 1. Pure ACK with correct sequence number. */
-		(th->ack && seq == TCP_SKB_CB(skb)->end_seq && seq == tp->rcv_nxt) &&
+		(th->ack && seq == TCP_SKB_CB(skb)->end_seq && seq == tp->rcv_nxt) &&   // 纯ack
 
 		/* 2. ... and duplicate ACK. */
-		ack == tp->snd_una &&
+		ack == tp->snd_una &&                                                   // ack在途包的第一个 就是dupack
 
 		/* 3. ... and does not update window. */
 		!tcp_may_update_window(tp, ack, seq, ntohs(th->window) << tp->rx_opt.snd_wscale) &&
 
 		/* 4. ... and sits in replay window. */
-		(s32)(tp->rx_opt.ts_recent - tp->rx_opt.rcv_tsval) <= (inet_csk(sk)->icsk_rto * 1024) / HZ);
+		(s32)(tp->rx_opt.ts_recent - tp->rx_opt.rcv_tsval) <= (inet_csk(sk)->icsk_rto * 1024) / HZ);    // 位于重放窗口内 大概率用于快传的ack包
 }
 
 static inline int tcp_paws_discard(const struct sock *sk, const struct sk_buff *skb)
 {
 	const struct tcp_sock *tp = tcp_sk(sk);
-	return ((s32)(tp->rx_opt.ts_recent - tp->rx_opt.rcv_tsval) > TCP_PAWS_WINDOW &&
+	return ((s32)(tp->rx_opt.ts_recent - tp->rx_opt.rcv_tsval) > TCP_PAWS_WINDOW &&     // 已知新时间(rcv_tsval)戳小 时间戳差值大于重放窗口(1s)也是可以接受的 场景: 乱序重复的ack
 		xtime.tv_sec < tp->rx_opt.ts_recent_stamp + TCP_PAWS_24DAYS &&
 		!tcp_disordered_ack(sk, skb));
 }
@@ -2904,13 +2904,13 @@ static void tcp_fin(struct sk_buff *skb, struct sock *sk, struct tcphdr *th)    
 			 * happens, we must ack the received FIN and
 			 * enter the CLOSING state.
 			 */
-			tcp_send_ack(sk);                                   // 同时关闭
+			tcp_send_ack(sk);                                   // 同时关闭 即fin1收到了对端的fin
 			tcp_set_state(sk, TCP_CLOSING);
 			break;
 		case TCP_FIN_WAIT2:
 			/* Received a FIN -- send ACK and enter TIME_WAIT. */
 			tcp_send_ack(sk);
-			tcp_time_wait(sk, TCP_TIME_WAIT, 0);                // 常见场景 主动关闭一方收到了对端的fin进入tw 开启tw定时器
+			tcp_time_wait(sk, TCP_TIME_WAIT, 0);                // tw定时器场景4(常见): 主动关闭一方收到了对端的fin进入tw 开启tw定时器
 			break;
 		default:
 			/* Only TCP_LISTEN and TCP_CLOSE are left, in these
@@ -3943,7 +3943,7 @@ int tcp_rcv_established(struct sock *sk, struct sk_buff *skb,
 		 */
 
 		/* Check timestamp */
-		if (tcp_header_len == sizeof(struct tcphdr) + TCPOLEN_TSTAMP_ALIGNED) {
+		if (tcp_header_len == sizeof(struct tcphdr) + TCPOLEN_TSTAMP_ALIGNED) {     // 开启tcp timestamp opt选项
 			__be32 *ptr = (__be32 *)(th + 1);
 
 			/* No? Slow path! */
@@ -3953,12 +3953,12 @@ int tcp_rcv_established(struct sock *sk, struct sk_buff *skb,
 
 			tp->rx_opt.saw_tstamp = 1;
 			++ptr; 
-			tp->rx_opt.rcv_tsval = ntohl(*ptr);
+			tp->rx_opt.rcv_tsval = ntohl(*ptr);                                     // 新的接受的数据段的时间戳
 			++ptr;
 			tp->rx_opt.rcv_tsecr = ntohl(*ptr);
 
 			/* If PAWS failed, check it more carefully in slow path */
-			if ((s32)(tp->rx_opt.rcv_tsval - tp->rx_opt.ts_recent) < 0)
+			if ((s32)(tp->rx_opt.rcv_tsval - tp->rx_opt.ts_recent) < 0)             // 新的时间戳 小于 上次发送过来的时间戳 则进入paws处理
 				goto slow_path;
 
 			/* DO NOT update ts_recent here, if checksum fails
@@ -4089,7 +4089,7 @@ slow_path:
 	 * RFC1323: H1. Apply PAWS check first.
 	 */
 	if (tcp_fast_parse_options(skb, th, tp) && tp->rx_opt.saw_tstamp &&
-	    tcp_paws_discard(sk, skb)) {
+	    tcp_paws_discard(sk, skb)) {                                        // 时间戳校验 丢弃大部分的老时间戳的包
 		if (!th->rst) {
 			NET_INC_STATS_BH(LINUX_MIB_PAWSESTABREJECTED);
 			tcp_send_dupack(sk, skb);
@@ -4428,7 +4428,7 @@ int tcp_rcv_state_process(struct sock *sk, struct sk_buff *skb,
 			goto discard;
 
 		if(th->syn) {
-			if (icsk->icsk_af_ops->conn_request(sk, skb) < 0)
+			if (icsk->icsk_af_ops->conn_request(sk, skb) < 0)                   //  tcp_v4_conn_request 处理syn
 				return 1;
 
 			/* Now we have several options: In theory there is 
@@ -4583,7 +4583,7 @@ int tcp_rcv_state_process(struct sock *sk, struct sk_buff *skb,
 						return 1;
 					}
 
-					tmo = tcp_fin_time(sk);
+					tmo = tcp_fin_time(sk);                     // tmo = max(linger2, 3.5RTO)
 					if (tmo > TCP_TIMEWAIT_LEN) {
 						inet_csk_reset_keepalive_timer(sk, tmo - TCP_TIMEWAIT_LEN);
 					} else if (th->fin || sock_owned_by_user(sk)) {
@@ -4595,7 +4595,7 @@ int tcp_rcv_state_process(struct sock *sk, struct sk_buff *skb,
 						 */
 						inet_csk_reset_keepalive_timer(sk, tmo);
 					} else {
-						tcp_time_wait(sk, TCP_FIN_WAIT2, tmo);  // fin1进入tw态
+						tcp_time_wait(sk, TCP_FIN_WAIT2, tmo);  // tw定时器场景2: fin1进入tw态
 						goto discard;
 					}
 				}
@@ -4604,7 +4604,7 @@ int tcp_rcv_state_process(struct sock *sk, struct sk_buff *skb,
 
 		case TCP_CLOSING:
 			if (tp->snd_una == tp->write_seq) {
-				tcp_time_wait(sk, TCP_TIME_WAIT, 0);        // 同时关闭(看上面) 收到了对端的ack进入tw
+				tcp_time_wait(sk, TCP_TIME_WAIT, 0);        // tw定时器场景1: 同时关闭(看上面: fin1收到了对端的fin) 如果收到了对端的ack进入tw
 				goto discard;
 			}
 			break;
