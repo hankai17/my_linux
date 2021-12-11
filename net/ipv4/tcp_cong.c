@@ -309,11 +309,11 @@ void tcp_reno_cong_avoid(struct sock *sk, u32 ack, u32 rtt, u32 in_flight,
 {
 	struct tcp_sock *tp = tcp_sk(sk);
 
-	if (!tcp_is_cwnd_limited(sk, in_flight))
+	if (!tcp_is_cwnd_limited(sk, in_flight))                            // 是否到达发送拥塞窗口限制
 		return;
 
 	/* In "safe" area, increase. */
-        if (tp->snd_cwnd <= tp->snd_ssthresh)
+    if (tp->snd_cwnd <= tp->snd_ssthresh)                               // 在途多而发送拥塞窗口小 且小于慢启动阈值
 		tcp_slow_start(tp);
 
  	/* In dangerous area, increase slowly. */
@@ -321,16 +321,16 @@ void tcp_reno_cong_avoid(struct sock *sk, u32 ack, u32 rtt, u32 in_flight,
  		/* RFC3465: Appropriate Byte Count
  		 * increase once for each full cwnd acked
  		 */
- 		if (tp->bytes_acked >= tp->snd_cwnd*tp->mss_cache) {
+ 		if (tp->bytes_acked >= tp->snd_cwnd*tp->mss_cache) {            // 当前的拥塞窗口的所有数据段都被ack
  			tp->bytes_acked -= tp->snd_cwnd*tp->mss_cache;
- 			if (tp->snd_cwnd < tp->snd_cwnd_clamp)
+ 			if (tp->snd_cwnd < tp->snd_cwnd_clamp)                      // 窗口++
  				tp->snd_cwnd++;
  		}
- 	} else {
- 		/* In theory this is tp->snd_cwnd += 1 / tp->snd_cwnd */
+ 	} else {                                                            // 在途多而发送拥塞窗口小 且大于慢启动阈值
+ 		/* In theory this is tp->snd_cwnd += 1 / tp->snd_cwnd */        // 理论上的每收一个ack 窗口增大 1/snd_cwnd
  		if (tp->snd_cwnd_cnt >= tp->snd_cwnd) {
  			if (tp->snd_cwnd < tp->snd_cwnd_clamp)
- 				tp->snd_cwnd++;
+ 				tp->snd_cwnd++;                                         
  			tp->snd_cwnd_cnt = 0;
  		} else
  			tp->snd_cwnd_cnt++;

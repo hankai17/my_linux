@@ -190,7 +190,7 @@ extern void tcp_time_wait(struct sock *sk, int state, int timeo);
 
 extern struct inet_timewait_death_row tcp_death_row;
 
-/* sysctl variables for tcp */
+/* sysctl variables for tcp  39个sysctl_tcp */
 extern int sysctl_tcp_timestamps;
 extern int sysctl_tcp_window_scaling;
 extern int sysctl_tcp_sack;
@@ -218,14 +218,14 @@ extern int sysctl_tcp_wmem[3];
 extern int sysctl_tcp_rmem[3];
 extern int sysctl_tcp_app_win;
 extern int sysctl_tcp_adv_win_scale;
-extern int sysctl_tcp_tw_reuse;
+extern int sysctl_tcp_tw_reuse;                     // 
 extern int sysctl_tcp_frto;
 extern int sysctl_tcp_low_latency;
 extern int sysctl_tcp_dma_copybreak;
 extern int sysctl_tcp_nometrics_save;
 extern int sysctl_tcp_moderate_rcvbuf;
-extern int sysctl_tcp_tso_win_divisor;
-extern int sysctl_tcp_abc;
+extern int sysctl_tcp_tso_win_divisor;              //
+extern int sysctl_tcp_abc;                          //
 extern int sysctl_tcp_mtu_probing;
 extern int sysctl_tcp_base_mss;
 extern int sysctl_tcp_workaround_signed_windows;
@@ -755,17 +755,17 @@ static inline int tcp_is_cwnd_limited(const struct sock *sk, u32 in_flight)
 	const struct tcp_sock *tp = tcp_sk(sk);
 	u32 left;
 
-	if (in_flight >= tp->snd_cwnd)
+	if (in_flight >= tp->snd_cwnd)                                  // 在途包 > 发送拥塞窗口 ---> 需要增大发送拥塞窗口
 		return 1;
 
 	if (!sk_can_gso(sk))
 		return 0;
 
-	left = tp->snd_cwnd - in_flight;
+	left = tp->snd_cwnd - in_flight;                                // 还能发送的数据量
 	if (sysctl_tcp_tso_win_divisor)
 		return left * sysctl_tcp_tso_win_divisor < tp->snd_cwnd;
 	else
-		return left <= tcp_max_burst(tp);
+		return left <= tcp_max_burst(tp);                           // 若left大于burst 说明发的太快 不需要增窗?
 }
 
 static inline void tcp_minshall_update(struct tcp_sock *tp, int mss,

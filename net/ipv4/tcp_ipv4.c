@@ -131,7 +131,7 @@ static inline __u32 tcp_v4_init_sequence(struct sk_buff *skb)
 					  skb->h.th->source);
 }
 
-int tcp_twsk_unique(struct sock *sk, struct sock *sktw, void *twp)
+int tcp_twsk_unique(struct sock *sk, struct sock *sktw, void *twp)         // tcp_v4_connect->inet_hash_connect->__inet_check_established->twsk_unique->twsk_unique 即仅在connect时 reuse才生效
 {
 	const struct tcp_timewait_sock *tcptw = tcp_twsk(sktw);
 	struct tcp_sock *tp = tcp_sk(sk);
@@ -149,7 +149,7 @@ int tcp_twsk_unique(struct sock *sk, struct sock *sktw, void *twp)
 	 */
 	if (tcptw->tw_ts_recent_stamp &&
 	    (twp == NULL || (sysctl_tcp_tw_reuse &&
-			     xtime.tv_sec - tcptw->tw_ts_recent_stamp > 1))) {
+			     xtime.tv_sec - tcptw->tw_ts_recent_stamp > 1))) {          // 当前时间 跟上次访问时间差值要大 要大于1s目的是排除paws影响
 		tp->write_seq = tcptw->tw_snd_nxt + 65535 + 2;
 		if (tp->write_seq == 0)
 			tp->write_seq = 1;
@@ -1352,7 +1352,7 @@ int tcp_v4_conn_request(struct sock *sk, struct sk_buff *skb)               // �
 		    (peer = rt_get_peer((struct rtable *)dst)) != NULL &&
 		    peer->v4daddr == saddr) {                                       // 如果开启了recycle 且有时间戳且能查到对端的路由信息
 			if (xtime.tv_sec < peer->tcp_ts_stamp + TCP_PAWS_MSL &&         // 当前时间跟对端最近一次被更新时间小于PAWS_MSL(60s跟tw的2MSL一样) 即60s内访问过
-			    (s32)(peer->tcp_ts - req->ts_recent) >                      // 且新来时间戳(这里是ts_recent)小且差值超过了重放窗口1s(差的离谱 明显是坏包)
+			    (s32)(peer->tcp_ts - req->ts_recent) >                      // 且新来时间戳(这里是ts_recent)小且差值超过了重放窗口1s(差的离谱 明显是坏包)        ---------> 代码考虑的是理想环境即时间戳线性增长 nat设备禁用该选项
 							TCP_PAWS_WINDOW) {
 				NET_INC_STATS_BH(LINUX_MIB_PAWSPASSIVEREJECTED);
 				dst_release(dst);
