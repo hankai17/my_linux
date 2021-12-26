@@ -32,7 +32,6 @@ rcv_wnd:    接收窗口大小
 packets_out:    发送未被确认的大小
 snd_cwnd:   发送的拥塞窗口
 
-tcp_sequence
 */
 
 /*
@@ -2527,7 +2526,7 @@ static void tcp_process_frto(struct sock *sk, u32 prior_snd_una)
 */
 
 /* This routine deals with incoming acks, but not outgoing ones. */
-static int tcp_ack(struct sock *sk, struct sk_buff *skb, int flag)      // 收到ack逻辑  发送ack逻辑是__tcp_ack_snd_check
+static int tcp_ack(struct sock *sk, struct sk_buff *skb, int flag)      // 主线4 收到ack逻辑  发送ack逻辑是__tcp_ack_snd_check
 {
 	struct inet_connection_sock *icsk = inet_csk(sk);
 	struct tcp_sock *tp = tcp_sk(sk);
@@ -2549,7 +2548,7 @@ static int tcp_ack(struct sock *sk, struct sk_buff *skb, int flag)      // 收�
 
     if (after(ack, prior_snd_una))                                      // ack大于发送未确认 则置flag
         flag |= FLAG_SND_UNA_ADVANCE;
-                                                                        // ---------------此时ack的范围在 在途字节seq的合理范围
+                                                                        // ----------------------------------------------------------------此时ack的范围在 在途字节seq的合理范围
 	if (sysctl_tcp_abc) {                                               // 不需要每个ack都要拥塞避免 因此我们需要计算已经ack的字节数
 		if (icsk->icsk_ca_state < TCP_CA_CWR)
 			tp->bytes_acked += ack - prior_snd_una;
@@ -2571,17 +2570,17 @@ static int tcp_ack(struct sock *sk, struct sk_buff *skb, int flag)      // 收�
 
 		NET_INC_STATS_BH(LINUX_MIB_TCPHPACKS);
 	} else {
-		if (ack_seq != TCP_SKB_CB(skb)->end_seq)                        // ack包还包含了数据
+		if (ack_seq != TCP_SKB_CB(skb)->end_seq)                        // 捎带ack: ack包还包含了数据
 			flag |= FLAG_DATA;
 		else
 			NET_INC_STATS_BH(LINUX_MIB_TCPPUREACKS);                    // 纯ack
 
 		flag |= tcp_ack_update_window(sk, tp, skb, ack, ack_seq);       // 更新本地"绝对"发送窗口snd_wnd(即对端的接收窗口)  为什么按序到来却不更新?
 
-		if (TCP_SKB_CB(skb)->sacked)                                    // 进入sack段的处理
+		if (TCP_SKB_CB(skb)->sacked)                                    // 如果是sack 则说明可能丢包了 ??? 因为有选择确认
 			flag |= tcp_sacktag_write_queue(sk, skb, prior_snd_una);
 
-		if (TCP_ECN_rcv_ecn_echo(tp, skb->h.th))
+		if (TCP_ECN_rcv_ecn_echo(tp, skb->h.th))                        // 路由器通知丢包 置位cec
 			flag |= FLAG_ECE;
 
 		tcp_ca_event(sk, CA_EVENT_SLOW_ACK);                            // 进入拥塞处理
@@ -2600,7 +2599,7 @@ static int tcp_ack(struct sock *sk, struct sk_buff *skb, int flag)      // 收�
                                                                         // packets_out: 在途字节数(这个值不会重复加 eg:重传不会增加这个值) - tcp_left_out: tp->sacked_out(sack的字节数) + tp->lost_out(丢失的字节数) ???
 
 	/* See if we can take anything off of the retransmit queue. */
-	flag |= tcp_clean_rtx_queue(sk, &seq_rtt);                          // 清理重传队列中的已经ack的数据段
+	flag |= tcp_clean_rtx_queue(sk, &seq_rtt);                          // 删除重传队列中已被确认的包  如果有被确认的包则置位acked
 
 	if (tp->frto_counter)
 		tcp_process_frto(sk, prior_snd_una);                            // 处理frto
@@ -2608,14 +2607,20 @@ static int tcp_ack(struct sock *sk, struct sk_buff *skb, int flag)      // 收�
 /*
 #define FLAG_ACKED      (FLAG_DATA_ACKED|FLAG_SYN_ACKED) 
 #define FLAG_NOT_DUP (FLAG_DATA|FLAG_WIN_UPDATE|FLAG_ACKED)
-#define FLAG_CA_ALERT           (FLAG_DATA_SACKED|FLAG_ECE)             //收到sack则说明可能有的段丢失了。而ECE则是路由器提示我们有拥塞了。我们必须处理。 
+#define FLAG_CA_ALERT           (FLAG_DATA_SACKED|FLAG_ECE)             //收到sack则说明可能有的段丢失了。而ECE则是路由器提示我们有拥塞了。我们必须处理 
+
+tcp_ack_is_dubious() {
+    return (!(flag & FLAG_NOT_DUP) ||                       // 如果没有acked(硬核)也没有data位也没有updata位  说明可能丢包
+            (flag & FLAG_CA_ALERT) ||                       // 即使有acked也不是一定没有丢包
+            inet_csk(sk)->icsk_ca_state != TCP_CA_Open);
+}
 */
-	if (tcp_ack_is_dubious(sk, flag)) {                                 // ack可疑: return (!(flag & FLAG_NOT_DUP) || (flag & FLAG_CA_ALERT) ||inet_csk(sk)->icsk_ca_state != TCP_CA_Open);
+	if (tcp_ack_is_dubious(sk, flag)) {                                 // ack可疑: 即可能丢包了 
 		/* Advance CWND, if state allows this. */
 		if ((flag & FLAG_DATA_ACKED) && tcp_may_raise_cwnd(sk, flag))   //  return (!(flag & FLAG_ECE) || tp->snd_cwnd < tp->snd_ssthresh) &&!((1 << inet_csk(sk)->icsk_ca_state) & (TCPF_CA_Recovery | TCPF_CA_CWR));
  
-			tcp_cong_avoid(sk, ack,  seq_rtt, prior_in_flight, 0);      //
-		tcp_fastretrans_alert(sk, prior_snd_una, prior_packets, flag);
+			tcp_cong_avoid(sk, ack,  seq_rtt, prior_in_flight, 0);      // 拥塞控制
+		tcp_fastretrans_alert(sk, prior_snd_una, prior_packets, flag);  // 快速重传
 	} else {
 		if ((flag & FLAG_DATA_ACKED))
 			tcp_cong_avoid(sk, ack, seq_rtt, prior_in_flight, 1);
@@ -2821,10 +2826,10 @@ static int tcp_disordered_ack(const struct sock *sk, const struct sk_buff *skb)
 	u32 ack = TCP_SKB_CB(skb)->ack_seq;
 
 	return (/* 1. Pure ACK with correct sequence number. */
-		(th->ack && seq == TCP_SKB_CB(skb)->end_seq && seq == tp->rcv_nxt) &&   // 纯ack
+		(th->ack && seq == TCP_SKB_CB(skb)->end_seq && seq == tp->rcv_nxt) &&                           // 纯ack
 
 		/* 2. ... and duplicate ACK. */
-		ack == tp->snd_una &&                                                   // ack在途包的第一个 就是dupack
+		ack == tp->snd_una &&                                                                           // ack在途包的第一个 就是dupack
 
 		/* 3. ... and does not update window. */
 		!tcp_may_update_window(tp, ack, seq, ntohs(th->window) << tp->rx_opt.snd_wscale) &&
@@ -2836,7 +2841,7 @@ static int tcp_disordered_ack(const struct sock *sk, const struct sk_buff *skb)
 static inline int tcp_paws_discard(const struct sock *sk, const struct sk_buff *skb)
 {
 	const struct tcp_sock *tp = tcp_sk(sk);
-	return ((s32)(tp->rx_opt.ts_recent - tp->rx_opt.rcv_tsval) > TCP_PAWS_WINDOW &&     // 已知新时间(rcv_tsval)戳小 时间戳差值大于重放窗口(1s)也是可以接受的 场景: 乱序重复的ack
+	return ((s32)(tp->rx_opt.ts_recent - tp->rx_opt.rcv_tsval) > TCP_PAWS_WINDOW &&     // 已知新时间(rcv_tsval)戳小 时间戳差<重放窗口(1s)也是可以接受的 场景: 乱序重复的ack
 		xtime.tv_sec < tp->rx_opt.ts_recent_stamp + TCP_PAWS_24DAYS &&
 		!tcp_disordered_ack(sk, skb));
 }
@@ -2854,10 +2859,14 @@ static inline int tcp_paws_discard(const struct sock *sk, const struct sk_buff *
  * (borrowed from freebsd)
  */
 
-static inline int tcp_sequence(struct tcp_sock *tp, u32 seq, u32 end_seq)
+/*
+                        |seq--------------end_seq|                                      // end_seq > wup
+|-------wup/rcv_nxt|++++rcv_wind+++++++|                                                // seq < rcv_nxt + wind
+*/
+static inline int tcp_sequence(struct tcp_sock *tp, u32 seq, u32 end_seq)               // 传参为该数据包的起始/结束seq
 {
-	return	!before(end_seq, tp->rcv_wup) &&                    // 结束序列号得大
-		!after(seq, tp->rcv_nxt + tcp_receive_window(tp));      // seq得落在接收窗口内
+	return	!before(end_seq, tp->rcv_wup) &&                                            // 结束序列号得大
+		!after(seq, tp->rcv_nxt + tcp_receive_window(tp));                              // seq得落在接收窗口内
 }
 
 /* When we get a reset we do this. */
@@ -3001,7 +3010,7 @@ static void tcp_dsack_extend(struct tcp_sock *tp, u32 seq, u32 end_seq)
 		tcp_sack_extend(tp->duplicate_sack, seq, end_seq);
 }
 
-static void tcp_send_dupack(struct sock *sk, struct sk_buff *skb)
+static void tcp_send_dupack(struct sock *sk, struct sk_buff *skb)       // 越界包 丢弃该包并发送ack
 {
 	struct tcp_sock *tp = tcp_sk(sk);
 
@@ -3683,7 +3692,11 @@ static inline void tcp_data_snd_check(struct sock *sk, struct tcp_sock *tp)
 /*
  * Check if sending an ack is needed.
  */
-static void __tcp_ack_snd_check(struct sock *sk, int ofo_possible)
+/*
+http1.1这种pipeline模型 基本上就是延迟发送 因为大多情况下只有一端大量的收发数据 令一端什么也不做
+交互式的会"自动"(需要手动调参)触发quick/pingpong模型?
+*/
+static void __tcp_ack_snd_check(struct sock *sk, int ofo_possible)      // 主线3 发送ack逻辑 // rfc1122/2581
 {
 	struct tcp_sock *tp = tcp_sk(sk);
 
@@ -3692,12 +3705,12 @@ static void __tcp_ack_snd_check(struct sock *sk, int ofo_possible)
 	     /* ... and right edge of window advances far enough.
 	      * (tcp_recvmsg() will send ACK otherwise). Or...
 	      */
-	     && __tcp_select_window(sk) >= tp->rcv_wnd) ||
+	     && __tcp_select_window(sk) >= tp->rcv_wnd) ||                  // 且需要调大本地接收窗口 最大优化吞吐所以立即通知对端赶紧发送数据
 	    /* We ACK each frame or... */
 	    tcp_in_quickack_mode(sk) ||                                     // 2这个sock处在quickack 模式 
 	    /* We have out of order data. */
 	    (ofo_possible &&
-	     skb_peek(&tp->out_of_order_queue))) {                          // 3out-of-order队列非空
+	     skb_peek(&tp->out_of_order_queue))) {                          // 3out-of-order队列非空 再次发送重复的ack
 		/* Then ack it now */
 		tcp_send_ack(sk);
 	} else {
@@ -3928,7 +3941,7 @@ out:
  *	tcp_data_queue when everything is OK.
  */
 int tcp_rcv_established(struct sock *sk, struct sk_buff *skb,
-			struct tcphdr *th, unsigned len)                                // tcp收包主逻辑
+			struct tcphdr *th, unsigned len)                                         // 主线1 tcp收包主逻辑
 {
 	struct tcp_sock *tp = tcp_sk(sk);
 
@@ -3959,7 +3972,7 @@ int tcp_rcv_established(struct sock *sk, struct sk_buff *skb,
 	 */
 
 	if ((tcp_flag_word(th) & TCP_HP_BITS) == tp->pred_flags &&
-		TCP_SKB_CB(skb)->seq == tp->rcv_nxt) {
+		TCP_SKB_CB(skb)->seq == tp->rcv_nxt) {                                      // 收到的包的seq是我所期待的 即包是按序到来的
 		int tcp_header_len = tp->tcp_header_len;
 
 		/* Timestamp header prediction: tcp_header_len
@@ -3968,7 +3981,7 @@ int tcp_rcv_established(struct sock *sk, struct sk_buff *skb,
 		 */
 
 		/* Check timestamp */
-		if (tcp_header_len == sizeof(struct tcphdr) + TCPOLEN_TSTAMP_ALIGNED) {     // 开启tcp timestamp opt选项
+		if (tcp_header_len == sizeof(struct tcphdr) + TCPOLEN_TSTAMP_ALIGNED) {     // 开启了tcp timestamp opt选项
 			__be32 *ptr = (__be32 *)(th + 1);
 
 			/* No? Slow path! */
@@ -4016,7 +4029,7 @@ int tcp_rcv_established(struct sock *sk, struct sk_buff *skb,
 				TCP_INC_STATS_BH(TCP_MIB_INERRS);
 				goto discard;
 			}
-		} else {
+		} else {                                                                    // 负载数据
 			int eaten = 0;
 			int copied_early = 0;
 
@@ -4028,13 +4041,14 @@ int tcp_rcv_established(struct sock *sk, struct sk_buff *skb,
 					eaten = 1;
 				}
 #endif
-				if (tp->ucopy.task == current && sock_owned_by_user(sk) && !copied_early) {
+				if (tp->ucopy.task == current                                       // 等待数据的进程是否是 现在正在运行的进程 ??? 现在不是在软中断中吗?
+                    && sock_owned_by_user(sk) && !copied_early) {
 					__set_current_state(TASK_RUNNING);
 
-					if (!tcp_copy_to_iovec(sk, skb, tcp_header_len))
+					if (!tcp_copy_to_iovec(sk, skb, tcp_header_len))                // 直接拷贝到应用层 非内核缓冲区
 						eaten = 1;
 				}
-				if (eaten) {
+				if (eaten) {                                                        // 拷贝成功
 					/* Predicted packet is in window by definition.
 					 * seq == rcv_nxt and rcv_wup <= rcv_nxt.
 					 * Hence, check seq<=rcv_wup reduces to:
@@ -4042,19 +4056,19 @@ int tcp_rcv_established(struct sock *sk, struct sk_buff *skb,
 					if (tcp_header_len ==
 					    (sizeof(struct tcphdr) +
 					     TCPOLEN_TSTAMP_ALIGNED) &&
-					    tp->rcv_nxt == tp->rcv_wup)
+					    tp->rcv_nxt == tp->rcv_wup) 
 						tcp_store_ts_recent(tp);
 
-					tcp_rcv_rtt_measure_ts(sk, skb);
+					tcp_rcv_rtt_measure_ts(sk, skb);                                // rtt测量
 
 					__skb_pull(skb, tcp_header_len);
-					tp->rcv_nxt = TCP_SKB_CB(skb)->end_seq;
+					tp->rcv_nxt = TCP_SKB_CB(skb)->end_seq;                         // 更新rcv_nxt
 					NET_INC_STATS_BH(LINUX_MIB_TCPHPHITSTOUSER);
 				}
 				if (copied_early)
 					tcp_cleanup_rbuf(sk, skb->len);
 			}
-			if (!eaten) {
+			if (!eaten) {                                                           // 拷贝到应用层失败 则放到接收队列上
 				if (tcp_checksum_complete_user(sk, skb))
 					goto csum_error;
 
@@ -4081,9 +4095,9 @@ int tcp_rcv_established(struct sock *sk, struct sk_buff *skb,
 				tp->rcv_nxt = TCP_SKB_CB(skb)->end_seq;
 			}
 
-			tcp_event_data_recv(sk, tp, skb);
+			tcp_event_data_recv(sk, tp, skb);                                       // ???
 
-			if (TCP_SKB_CB(skb)->ack_seq != tp->snd_una) {
+			if (TCP_SKB_CB(skb)->ack_seq != tp->snd_una) {                          // 对端的包的确是按序到来的 本端发的包却丢了
 				/* Well, only one small jumplet in fast path... */
 				tcp_ack(sk, skb, FLAG_DATA);
 				tcp_data_snd_check(sk, tp);
@@ -4091,7 +4105,7 @@ int tcp_rcv_established(struct sock *sk, struct sk_buff *skb,
 					goto no_ack;
 			}
 
-			__tcp_ack_snd_check(sk, 0);
+			__tcp_ack_snd_check(sk, 0);                                             // 因为按序到来 里面很可能就delay了(收2个包返一个ack)
 no_ack:
 #ifdef CONFIG_NET_DMA
 			if (copied_early)
@@ -4432,7 +4446,7 @@ reset_and_undo:
  *	address independent.
  */
 	
-int tcp_rcv_state_process(struct sock *sk, struct sk_buff *skb,
+int tcp_rcv_state_process(struct sock *sk, struct sk_buff *skb,                 // 主线2 syn处理 非es/tw收包处理 
 			  struct tcphdr *th, unsigned len)
 {
 	struct tcp_sock *tp = tcp_sk(sk);
@@ -4453,7 +4467,7 @@ int tcp_rcv_state_process(struct sock *sk, struct sk_buff *skb,
 			goto discard;
 
 		if(th->syn) {
-			if (icsk->icsk_af_ops->conn_request(sk, skb) < 0)                   //  tcp_v4_conn_request 处理syn
+			if (icsk->icsk_af_ops->conn_request(sk, skb) < 0)                   //  tcp_ipv4.c:tcp_v4_conn_request 处理syn
 				return 1;
 
 			/* Now we have several options: In theory there is 
@@ -4501,7 +4515,7 @@ int tcp_rcv_state_process(struct sock *sk, struct sk_buff *skb,
 	}
 
 	/* step 1: check sequence number */
-	if (!tcp_sequence(tp, TCP_SKB_CB(skb)->seq, TCP_SKB_CB(skb)->end_seq)) {
+	if (!tcp_sequence(tp, TCP_SKB_CB(skb)->seq, TCP_SKB_CB(skb)->end_seq)) {    // 
 		if (!th->rst)
 			tcp_send_dupack(sk, skb);
 		goto discard;
@@ -4536,7 +4550,7 @@ int tcp_rcv_state_process(struct sock *sk, struct sk_buff *skb,
 			if (acceptable) {
 				tp->copied_seq = tp->rcv_nxt;
 				smp_mb();
-				tcp_set_state(sk, TCP_ESTABLISHED);
+				tcp_set_state(sk, TCP_ESTABLISHED);                             // 连接建立
 				sk->sk_state_change(sk);
 
 				/* Note, that this wakeup is only for marginal
@@ -4548,7 +4562,7 @@ int tcp_rcv_state_process(struct sock *sk, struct sk_buff *skb,
 					sk_wake_async(sk,0,POLL_OUT);
 				}
 
-				tp->snd_una = TCP_SKB_CB(skb)->ack_seq;
+				tp->snd_una = TCP_SKB_CB(skb)->ack_seq;                         // 设置期望序列号跟窗口
 				tp->snd_wnd = ntohs(th->window) <<
 					      tp->rx_opt.snd_wscale;
 				tcp_init_wl(tp, TCP_SKB_CB(skb)->ack_seq,

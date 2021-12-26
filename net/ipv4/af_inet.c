@@ -194,11 +194,12 @@ int inet_listen(struct socket *sock, int backlog)
 	lock_sock(sk);
 
 	err = -EINVAL;
-	if (sock->state != SS_UNCONNECTED || sock->type != SOCK_STREAM)
+	if (sock->state != SS_UNCONNECTED || 
+        sock->type != SOCK_STREAM)                                  // 只有流模式才能listen
 		goto out;
 
 	old_state = sk->sk_state;
-	if (!((1 << old_state) & (TCPF_CLOSE | TCPF_LISTEN)))
+	if (!((1 << old_state) & (TCPF_CLOSE | TCPF_LISTEN)))           // 状态必须为close/listen
 		goto out;
 
 	/* Really, if the socket is already in listen state
@@ -221,7 +222,7 @@ out:
  *	Create an inet socket.
  */
 
-static int inet_create(struct socket *sock, int protocol)
+static int inet_create(struct socket *sock, int protocol)               // sock_create中根据 family调用相应注册的create函数
 {
 	struct sock *sk;
 	struct list_head *p;
@@ -233,14 +234,14 @@ static int inet_create(struct socket *sock, int protocol)
 	int try_loading_module = 0;
 	int err;
 
-	sock->state = SS_UNCONNECTED;
+	sock->state = SS_UNCONNECTED;                                       // sock初始态
 
 	/* Look for the requested type/protocol pair. */
 	answer = NULL;
 lookup_protocol:
 	err = -ESOCKTNOSUPPORT;
 	rcu_read_lock();
-	list_for_each_rcu(p, &inetsw[sock->type]) {
+	list_for_each_rcu(p, &inetsw[sock->type]) {                         // 先根据type 找socket注册的proto
 		answer = list_entry(p, struct inet_protosw, list);
 
 		/* Check the non-wild match. */
@@ -285,7 +286,7 @@ lookup_protocol:
 	err = -EPERM;
 	if (answer->capability > 0 && !capable(answer->capability))
 		goto out_rcu_unlock;
-
+                                                                            // 一般protocol传入0  answer最终为IPPROTO_TCP
 	sock->ops = answer->ops;
 	answer_prot = answer->prot;
 	answer_no_check = answer->no_check;
@@ -320,7 +321,7 @@ lookup_protocol:
 
 	inet->id = 0;
 
-	sock_init_data(sock, sk);
+	sock_init_data(sock, sk);                                           // 初始化读/写/错误队列及定时器等
 
 	sk->sk_destruct	   = inet_sock_destruct;
 	sk->sk_family	   = PF_INET;
@@ -347,7 +348,7 @@ lookup_protocol:
 	}
 
 	if (sk->sk_prot->init) {
-		err = sk->sk_prot->init(sk);
+		err = sk->sk_prot->init(sk);                                    // 四层协议初始化
 		if (err)
 			sk_common_release(sk);
 	}
@@ -412,7 +413,7 @@ int inet_bind(struct socket *sock, struct sockaddr *uaddr, int addr_len)
 	if (addr_len < sizeof(struct sockaddr_in))
 		goto out;
 
-	chk_addr_ret = inet_addr_type(addr->sin_addr.s_addr);
+	chk_addr_ret = inet_addr_type(addr->sin_addr.s_addr);           // 得到地址类型 如广播地址
 
 	/* Not specified by any standard per-se, however it breaks too
 	 * many applications when removed.  It is unfortunate since
@@ -430,9 +431,9 @@ int inet_bind(struct socket *sock, struct sockaddr *uaddr, int addr_len)
 	    chk_addr_ret != RTN_BROADCAST)
 		goto out;
 
-	snum = ntohs(addr->sin_port);
+	snum = ntohs(addr->sin_port);                                   // 拿到端口
 	err = -EACCES;
-	if (snum && snum < PROT_SOCK && !capable(CAP_NET_BIND_SERVICE))
+	if (snum && snum < PROT_SOCK && !capable(CAP_NET_BIND_SERVICE)) // 端口号<1024需有root权限(capable)
 		goto out;
 
 	/*      We keep a pair of addresses. rcv_saddr is the one
@@ -446,15 +447,15 @@ int inet_bind(struct socket *sock, struct sockaddr *uaddr, int addr_len)
 
 	/* Check these errors (active socket, double bind). */
 	err = -EINVAL;
-	if (sk->sk_state != TCP_CLOSE || inet->num)
+	if (sk->sk_state != TCP_CLOSE || inet->num)                     // ???
 		goto out_release_sock;
 
-	inet->rcv_saddr = inet->saddr = addr->sin_addr.s_addr;
+	inet->rcv_saddr = inet->saddr = addr->sin_addr.s_addr;          // 设置源地址
 	if (chk_addr_ret == RTN_MULTICAST || chk_addr_ret == RTN_BROADCAST)
 		inet->saddr = 0;  /* Use device */
 
 	/* Make sure we are allowed to bind here. */
-	if (sk->sk_prot->get_port(sk, snum)) {
+	if (sk->sk_prot->get_port(sk, snum)) {                          // 端口的ACL(inet_csk_get_port)
 		inet->saddr = inet->rcv_saddr = 0;
 		err = -EADDRINUSE;
 		goto out_release_sock;
@@ -881,7 +882,7 @@ static struct inet_protosw inetsw_array[] =
         {
                 .type =       SOCK_STREAM,
                 .protocol =   IPPROTO_TCP,
-                .prot =       &tcp_prot,
+                .prot =       &tcp_prot,                    // 四层协议
                 .ops =        &inet_stream_ops,
                 .capability = -1,
                 .no_check =   0,

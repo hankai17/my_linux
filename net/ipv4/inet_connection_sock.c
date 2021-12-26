@@ -78,14 +78,14 @@ int inet_csk_get_port(struct inet_hashinfo *hashinfo,
 	int ret;
 
 	local_bh_disable();
-	if (!snum) {
+	if (!snum) {                                                                    // 端口为0 内核决定
 		int low = sysctl_local_port_range[0];
 		int high = sysctl_local_port_range[1];
 		int remaining = (high - low) + 1;
-		int rover = net_random() % (high - low) + low;
+		int rover = net_random() % (high - low) + low;                              // 端口range随机选择一个
 
 		do {
-			head = &hashinfo->bhash[inet_bhashfn(rover, hashinfo->bhash_size)];
+			head = &hashinfo->bhash[inet_bhashfn(rover, hashinfo->bhash_size)];     // 从bhash上找一个位置
 			spin_lock(&head->lock);
 			inet_bind_bucket_for_each(tb, node, &head->chain)
 				if (tb->port == rover)
@@ -115,7 +115,7 @@ int inet_csk_get_port(struct inet_hashinfo *hashinfo,
 		head = &hashinfo->bhash[inet_bhashfn(snum, hashinfo->bhash_size)];
 		spin_lock(&head->lock);
 		inet_bind_bucket_for_each(tb, node, &head->chain)
-			if (tb->port == snum)
+			if (tb->port == snum)                                                   // 发现该端口已经被使用 则查看是否允许reuse
 				goto tb_found;
 	}
 	tb = NULL;
@@ -135,7 +135,8 @@ tb_found:
 	}
 tb_not_found:
 	ret = 1;
-	if (!tb && (tb = inet_bind_bucket_create(hashinfo->bind_bucket_cachep, head, snum)) == NULL)
+	if (!tb && (tb = inet_bind_bucket_create(hashinfo->bind_bucket_cachep,          // 创建sk挂bhash上
+        head, snum)) == NULL)        
 		goto fail_unlock;
 	if (hlist_empty(&tb->owners)) {
 		if (sk->sk_reuse && sk->sk_state != TCP_LISTEN)
@@ -389,11 +390,11 @@ void inet_csk_reqsk_queue_hash_add(struct sock *sk, struct request_sock *req,
 {
 	struct inet_connection_sock *icsk = inet_csk(sk);
 	struct listen_sock *lopt = icsk->icsk_accept_queue.listen_opt;
-	const u32 h = inet_synq_hash(inet_rsk(req)->rmt_addr, inet_rsk(req)->rmt_port,
-				     lopt->hash_rnd, lopt->nr_table_entries);
+	const u32 h = inet_synq_hash(inet_rsk(req)->rmt_addr, 
+        inet_rsk(req)->rmt_port, lopt->hash_rnd, lopt->nr_table_entries);
 
 	reqsk_queue_hash_req(&icsk->icsk_accept_queue, h, req, timeout);
-	inet_csk_reqsk_queue_added(sk, timeout); // 插入半连接队列
+	inet_csk_reqsk_queue_added(sk, timeout);                                // 插入半连接队列: qlen++
 }
 
 /* Only thing we need from tcp.h */

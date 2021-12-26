@@ -1257,7 +1257,7 @@ int tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 			 * 2. backlog
 			 * 3. prequeue
 			 * 4. receive_queue
-			 *
+			 *                                                                          // 1234只有下一个空了才能处理上一个
 			 * Each queue can be processed only if the next ones
 			 * are empty. At this point we have empty receive_queue.
 			 * But prequeue _can_ be not empty after 2nd iteration,
@@ -1280,7 +1280,7 @@ int tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 
 		if (copied >= target) {
 			/* Do not sleep, just process backlog. */
-			release_sock(sk);
+			release_sock(sk);                                                            // 上层占用结束 sk->sk_lock.owner = NULL
 			lock_sock(sk);
 		} else
 			sk_wait_data(sk, &timeo);
@@ -1303,7 +1303,7 @@ int tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 			if (tp->rcv_nxt == tp->copied_seq &&
 			    !skb_queue_empty(&tp->ucopy.prequeue)) {
 do_prequeue:
-				tcp_prequeue_process(sk);
+				tcp_prequeue_process(sk);                                               // 把prequeue 移动到backlog中
 
 				if ((chunk = len - tp->ucopy.len) != 0) {
 					NET_ADD_STATS_USER(LINUX_MIB_TCPDIRECTCOPYFROMPREQUEUE, chunk);
@@ -1469,7 +1469,7 @@ skip_copy:
 	tcp_cleanup_rbuf(sk, copied);
 
 	TCP_CHECK_TIMER(sk);
-	release_sock(sk);
+	release_sock(sk);                                                               // 上层占用结束 sk->sk_lock.owner = NULL
 	return copied;
 
 out:

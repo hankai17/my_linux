@@ -210,7 +210,7 @@ extern int sysctl_tcp_rfc1337;
 extern int sysctl_tcp_abort_on_overflow;
 extern int sysctl_tcp_max_orphans;
 extern int sysctl_tcp_fack;
-extern int sysctl_tcp_reordering;
+extern int sysctl_tcp_reordering;                   //
 extern int sysctl_tcp_ecn;
 extern int sysctl_tcp_dsack;
 extern int sysctl_tcp_mem[3];
@@ -220,7 +220,7 @@ extern int sysctl_tcp_app_win;
 extern int sysctl_tcp_adv_win_scale;
 extern int sysctl_tcp_tw_reuse;                     // 
 extern int sysctl_tcp_frto;
-extern int sysctl_tcp_low_latency;
+extern int sysctl_tcp_low_latency;                  // prequeue
 extern int sysctl_tcp_dma_copybreak;
 extern int sysctl_tcp_nometrics_save;
 extern int sysctl_tcp_moderate_rcvbuf;
@@ -1010,7 +1010,7 @@ static inline int tcp_fin_time(const struct sock *sk)
 
 static inline int tcp_paws_check(const struct tcp_options_received *rx_opt, int rst)
 {
-	if ((s32)(rx_opt->rcv_tsval - rx_opt->ts_recent) >= 0)              // 新时间戳大则不拒绝
+	if ((s32)(rx_opt->rcv_tsval - rx_opt->ts_recent) >= 0)                              // 新时间戳大则不拒绝
 		return 0;
 	if (xtime.tv_sec >= rx_opt->ts_recent_stamp + TCP_PAWS_24DAYS)
 		return 0;
@@ -1027,7 +1027,7 @@ static inline int tcp_paws_check(const struct tcp_options_received *rx_opt, int 
 
 	   However, we can relax time bounds for RST segments to MSL.
 	 */
-	if (rst && xtime.tv_sec >= rx_opt->ts_recent_stamp + TCP_PAWS_MSL)
+	if (rst && xtime.tv_sec >= rx_opt->ts_recent_stamp + TCP_PAWS_MSL)                  // 必须是rst才有这种特例 即允许1秒钟的落后
 		return 0;
 	return 1;
 }

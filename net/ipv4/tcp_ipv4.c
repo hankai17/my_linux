@@ -1270,9 +1270,9 @@ int tcp_v4_conn_request(struct sock *sk, struct sk_buff *skb)               // �
 	 * limitations, they conserve resources and peer is
 	 * evidently real one.
 	 */
-	if (inet_csk_reqsk_queue_is_full(sk) && !isn) {                         // 判断半连接队列是否满 如果满且处于非tw态则丢弃该包
+	if (inet_csk_reqsk_queue_is_full(sk) && !isn) {                         // 判断半连接队列(以源码起名为主 源码中半连接队列为accept队列 全连接队列为backlog队列)是否满 如果满且处于非tw态则丢弃该包
 #ifdef CONFIG_SYN_COOKIES
-		if (sysctl_tcp_syncookies) {                                        // (如果设置了SYN Cookie即使半连接队列满也会继续进行 因为SYN Cookie不需要新分配半连接队列 详细的SYN Cookie请google)  
+		if (sysctl_tcp_syncookies) {                                        // (如果设置了SYN Cookie即使半连接队列满也会继续进行 因为SYN Cookie不需要新分配半连接队列 详细的SYN Cookie请google)
 			want_cookie = 1;
 		} else
 #endif
@@ -1284,7 +1284,7 @@ int tcp_v4_conn_request(struct sock *sk, struct sk_buff *skb)               // �
 	 * clogging syn queue with openreqs with exponentially increasing
 	 * timeout.
 	 */
-	if (sk_acceptq_is_full(sk) && inet_csk_reqsk_queue_young(sk) > 1)       // 判断backlog队列是否满 满且qlen_young大于一(syn队列中已经有足够多的(这里不包括重传的syn)请求了)就丢个包 		
+	if (sk_acceptq_is_full(sk) && inet_csk_reqsk_queue_young(sk) > 1)       // 判断backlog队列是否满 满且qlen_young>1(syn队列中已经有足够多的(这里不包括重传的syn)请求了)就丢个包
         goto drop;
 
 	req = reqsk_alloc(&tcp_request_sock_ops);
@@ -1295,7 +1295,7 @@ int tcp_v4_conn_request(struct sock *sk, struct sk_buff *skb)               // �
 	tcp_rsk(req)->af_specific = &tcp_request_sock_ipv4_ops;
 #endif
 
-	tcp_clear_options(&tmp_opt);                                            // 对tmp_opt进行初始化tcp的一些选项信息(比如mss/窗口扩大因子等等) 
+	tcp_clear_options(&tmp_opt);                                            // 对tmp_opt进行初始化tcp的一些选项信息(比如mss/窗口扩大因子等等)
 	tmp_opt.mss_clamp = 536;
 	tmp_opt.user_mss  = tcp_sk(sk)->rx_opt.user_mss;
 
@@ -1349,10 +1349,10 @@ int tcp_v4_conn_request(struct sock *sk, struct sk_buff *skb)               // �
 		if (tmp_opt.saw_tstamp &&
 		    tcp_death_row.sysctl_tw_recycle &&
 		    (dst = inet_csk_route_req(sk, req)) != NULL &&
-		    (peer = rt_get_peer((struct rtable *)dst)) != NULL &&
-		    peer->v4daddr == saddr) {                                       // 如果开启了recycle 且有时间戳且能查到对端的路由信息
-			if (xtime.tv_sec < peer->tcp_ts_stamp + TCP_PAWS_MSL &&         // 当前时间跟对端最近一次被更新时间小于PAWS_MSL(60s跟tw的2MSL一样) 即60s内访问过
-			    (s32)(peer->tcp_ts - req->ts_recent) >                      // 且新来时间戳(这里是ts_recent)小且差值超过了重放窗口1s(差的离谱 明显是坏包)        ---------> 代码考虑的是理想环境即时间戳线性增长 nat设备禁用该选项
+		    (peer = rt_get_peer((struct rtable *)dst)) != NULL &&           // 先看tw定时器 先看定时器tcp_minisocks.c:tcp_time_wait
+		    peer->v4daddr == saddr) {                                       // 如果开启了recycle 且有时间戳且能查到对端的路由信息(危险分子)
+			if (xtime.tv_sec < peer->tcp_ts_stamp + TCP_PAWS_MSL &&         // 当前时间跟对端最近一次被更新时间小于PAWS_MSL(60s跟tw的2MSL一样) 即60s内访问过(恐怖分子)
+			    (s32)(peer->tcp_ts - req->ts_recent) >                      // 且新来时间戳(这里是ts_recent)小且差值>重放窗口即1s(差的离谱 明显是坏包)        ---------> 代码考虑的是理想环境即时间戳线性增长 nat设备禁用该选项
 							TCP_PAWS_WINDOW) {
 				NET_INC_STATS_BH(LINUX_MIB_PAWSPASSIVEREJECTED);
 				dst_release(dst);
@@ -1486,7 +1486,7 @@ static struct sock *tcp_v4_hnd_req(struct sock *sk, struct sk_buff *skb)
 	struct sock *nsk;
 	struct request_sock **prev;
 	/* Find possible connection requests. */
-	struct request_sock *req = inet_csk_search_req(sk, &prev, th->source,
+	struct request_sock *req = inet_csk_search_req(sk, &prev, th->source,       // 查找监听套接字的syn请求队列 如果找到了则此时是三次握手的最后一个ack包
 						       iph->saddr, iph->daddr);
 	if (req)
 		return tcp_check_req(sk, skb, req, prev);
@@ -1508,7 +1508,7 @@ static struct sock *tcp_v4_hnd_req(struct sock *sk, struct sk_buff *skb)
 	if (!th->rst && !th->syn && th->ack)
 		sk = cookie_v4_check(sk, skb, &(IPCB(skb)->opt));
 #endif
-	return sk;
+	return sk;                                                                  // 返回原来的监听套接字
 }
 
 static __sum16 tcp_v4_checksum_init(struct sk_buff *skb)
@@ -1571,8 +1571,8 @@ int tcp_v4_do_rcv(struct sock *sk, struct sk_buff *skb)
 		if (!nsk)
 			goto discard;
 
-		if (nsk != sk) {
-			if (tcp_child_process(sk, nsk, skb)) {
+		if (nsk != sk) {                                                        // 三次握手的最后一个包 新连接
+			if (tcp_child_process(sk, nsk, skb)) {                              // ats的cpu高
 				rsk = nsk;
 				goto reset;
 			}
@@ -1679,7 +1679,7 @@ process:
 		else
 #endif
 		{
-			if (!tcp_prequeue(sk, skb))                                     // 放入prequeue 失败则放入receive_queue
+			if (!tcp_prequeue(sk, skb))                                     // 放入prequeue 满则放入receive_queue   因为receive_queue队列处理很复杂 为了减少软中断负担 优先把包放到prequeue中 然后再进程上下文(tcp_recvmsg)中处理这个
 			ret = tcp_v4_do_rcv(sk, skb);                                   // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 		}
 	} else
@@ -1833,13 +1833,13 @@ static struct tcp_sock_af_ops tcp_sock_ipv4_specific = {
 /* NOTE: A lot of things set to zero explicitly by call to
  *       sk_alloc() so need not be done here.
  */
-static int tcp_v4_init_sock(struct sock *sk)
+static int tcp_v4_init_sock(struct sock *sk)                                // 主线0 socket调用中四层协议(tcp)的生命开始
 {
 	struct inet_connection_sock *icsk = inet_csk(sk);
 	struct tcp_sock *tp = tcp_sk(sk);
 
 	skb_queue_head_init(&tp->out_of_order_queue);
-	tcp_init_xmit_timers(sk);
+	tcp_init_xmit_timers(sk);                                               // 定时器主线0 定时三剑客
 	tcp_prequeue_init(tp);
 
 	icsk->icsk_rto = TCP_TIMEOUT_INIT;
@@ -1859,7 +1859,7 @@ static int tcp_v4_init_sock(struct sock *sk)
 	tp->snd_cwnd_clamp = ~0;
 	tp->mss_cache = 536;
 
-	tp->reordering = sysctl_tcp_reordering;
+	tp->reordering = sysctl_tcp_reordering;                                 // 快速重传阈值
 	icsk->icsk_ca_ops = &tcp_init_congestion_ops;
 
 	sk->sk_state = TCP_CLOSE;

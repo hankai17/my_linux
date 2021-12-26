@@ -1351,7 +1351,12 @@ static int tcp_mtu_probe(struct sock *sk)
  * Returns 1, if no segments are in flight and we have queued segments, but
  * cannot send anything now because of SWS or another problem.
  */
-static int tcp_write_xmit(struct sock *sk, unsigned int mss_now, int nonagle) // 将sk_write_queue中的skb 再拷贝一下发出去
+/*
+网卡指标1/10/100Gb/s 意思是每秒钟可以将网卡上的包发出去 但协议栈可能提供不了那么多
+100Gb需要协议栈每120ns提供一个full mss包
+一般情况下: spinlock需要20ns 内存分配60ns cachemiss30ns
+*/
+static int tcp_write_xmit(struct sock *sk, unsigned int mss_now, int nonagle) // 将sk_write_queue中的skb 再拷贝一下发出去 // 可以在这里做统计测试协议栈发包瓶颈: 平均4us发一个full mss包
 {
 	struct tcp_sock *tp = tcp_sk(sk);
 	struct sk_buff *skb;

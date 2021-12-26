@@ -38,7 +38,7 @@ int sysctl_tcp_syncookies __read_mostly = SYNC_INIT;
 int sysctl_tcp_abort_on_overflow __read_mostly;
 
 struct inet_timewait_death_row tcp_death_row = {                    // 维护所有tw并管理tw超时  本身也作为一个定时器元素
-	.sysctl_max_tw_buckets = NR_FILE * 2,
+	.sysctl_max_tw_buckets = NR_FILE * 2,                           // tw超过这个值18w后就会打印警告
 	.period		= TCP_TIMEWAIT_LEN / INET_TWDR_TWKILL_SLOTS,
 	.death_lock	= __SPIN_LOCK_UNLOCKED(tcp_death_row.death_lock),
 	.hashinfo	= &tcp_hashinfo,                                    // 共用全局inet_hashinfo
@@ -108,7 +108,7 @@ tcp_timewait_state_process(struct inet_timewait_sock *tw, struct sk_buff *skb,  
 		if (tmp_opt.saw_tstamp) {
 			tmp_opt.ts_recent	= tcptw->tw_ts_recent;
 			tmp_opt.ts_recent_stamp	= tcptw->tw_ts_recent_stamp;
-			paws_reject = tcp_paws_check(&tmp_opt, th->rst);                    // 新来的时间戳小 则置位reject
+			paws_reject = tcp_paws_check(&tmp_opt, th->rst);                    // 一般包(rst例外)时间戳小 则置位reject
 		}
 	}
 
@@ -189,7 +189,7 @@ kill_with_rst:
 
 	if (!paws_reject &&
 	    (TCP_SKB_CB(skb)->seq == tcptw->tw_rcv_nxt &&
-	     (TCP_SKB_CB(skb)->seq == TCP_SKB_CB(skb)->end_seq || th->rst))) {      // 普通tw态 收到不带数据的ack包
+	     (TCP_SKB_CB(skb)->seq == TCP_SKB_CB(skb)->end_seq || th->rst))) {      // 普通tw态 收到不带数据的ack包 或rst
 		/* In window segment, it may be only reset or bare ack. */
 
 		if (th->rst) {
@@ -197,7 +197,7 @@ kill_with_rst:
 			 * Oh well... nobody has a sufficient solution to this
 			 * protocol bug yet.
 			 */
-			if (sysctl_tcp_rfc1337 == 0) {                                      // 收到rst包 且开启了rfc1337 则丢弃rst包
+			if (sysctl_tcp_rfc1337 == 0) {                                      // 如果收到rst包 且开启了rfc1337 则丢弃rst包 走正常的tw等待流程
 kill:
 				inet_twsk_deschedule(tw, &tcp_death_row);
 				inet_twsk_put(tw);
@@ -247,7 +247,7 @@ kill:
 	if (paws_reject)
 		NET_INC_STATS_BH(LINUX_MIB_PAWSESTABREJECTED);
 
-	if(!th->rst) {
+	if(!th->rst) {                                                      // 2MSL面试场景
 		/* In this case we must reset the TIMEWAIT timer.
 		 *
 		 * If it is ACKless SYN it may be both old duplicate
@@ -277,7 +277,7 @@ void tcp_time_wait(struct sock *sk, int state, int timeo)
 	const struct tcp_sock *tp = tcp_sk(sk);
 	int recycle_ok = 0;
 
-	if (tcp_death_row.sysctl_tw_recycle && tp->rx_opt.ts_recent_stamp)  // 如果打开recycle且有时间戳 进入recycle模式(定时RTO 非普通的2MSL)
+	if (tcp_death_row.sysctl_tw_recycle && tp->rx_opt.ts_recent_stamp)  // 如果打开recycle且有时间戳 进入recycle模式(定时RTO 非普通的2MSL) 定时器这里才体现快速回收的设计理念
 		recycle_ok = icsk->icsk_af_ops->remember_stamp(sk);             // tcp_v4_remember_stamp()
 
 	if (tcp_death_row.tw_count < tcp_death_row.sysctl_max_tw_buckets)
@@ -489,7 +489,7 @@ struct sock *tcp_create_openreq_child(struct sock *sk, struct request_sock *req,
 
 struct sock *tcp_check_req(struct sock *sk,struct sk_buff *skb,
 			   struct request_sock *req,
-			   struct request_sock **prev)
+			   struct request_sock **prev)                                          // 主要场景是 收到了三次握手的最后一个ack
 {
 	struct tcphdr *th = skb->h.th;
 	__be32 flg = tcp_flag_word(th) & (TCP_FLAG_RST|TCP_FLAG_SYN|TCP_FLAG_ACK);
@@ -513,7 +513,7 @@ struct sock *tcp_check_req(struct sock *sk,struct sk_buff *skb,
 	}
 
 	/* Check for pure retransmitted SYN. */
-	if (TCP_SKB_CB(skb)->seq == tcp_rsk(req)->rcv_isn &&
+	if (TCP_SKB_CB(skb)->seq == tcp_rsk(req)->rcv_isn &&                            // syn的重传包
 	    flg == TCP_FLAG_SYN &&
 	    !paws_reject) {
 		/*
@@ -592,7 +592,7 @@ struct sock *tcp_check_req(struct sock *sk,struct sk_buff *skb,
 	 * Invalid ACK: reset will be sent by listening socket
 	 */
 	if ((flg & TCP_FLAG_ACK) &&
-	    (TCP_SKB_CB(skb)->ack_seq != tcp_rsk(req)->snt_isn + 1))
+	    (TCP_SKB_CB(skb)->ack_seq != tcp_rsk(req)->snt_isn + 1))                    // 判断最后一个ack到来
 		return sk;
 
 	/* Also, it would be not so bad idea to check rcv_tsecr, which
@@ -634,12 +634,12 @@ struct sock *tcp_check_req(struct sock *sk,struct sk_buff *skb,
 		/* ACK sequence verified above, just make sure ACK is
 		 * set.  If ACK not set, just silently drop the packet.
 		 */
-		if (!(flg & TCP_FLAG_ACK))
+		if (!(flg & TCP_FLAG_ACK))                                                  // 三次握手最后的ack
 			return NULL;
 
 		/* If TCP_DEFER_ACCEPT is set, drop bare ACK. */
 		if (inet_csk(sk)->icsk_accept_queue.rskq_defer_accept &&
-		    TCP_SKB_CB(skb)->end_seq == tcp_rsk(req)->rcv_isn + 1) {
+		    TCP_SKB_CB(skb)->end_seq == tcp_rsk(req)->rcv_isn + 1) {                // defer
 			inet_rsk(req)->acked = 1;
 			return NULL;
 		}
@@ -650,7 +650,7 @@ struct sock *tcp_check_req(struct sock *sk,struct sk_buff *skb,
 		 * ESTABLISHED STATE. If it will be dropped after
 		 * socket is created, wait for troubles.
 		 */
-		child = inet_csk(sk)->icsk_af_ops->syn_recv_sock(sk, skb,
+		child = inet_csk(sk)->icsk_af_ops->syn_recv_sock(sk, skb,                   // 创建新socket
 								 req, NULL);
 		if (child == NULL)
 			goto listen_overflow;
@@ -679,10 +679,10 @@ struct sock *tcp_check_req(struct sock *sk,struct sk_buff *skb,
 		}
 #endif
 
-		inet_csk_reqsk_queue_unlink(sk, req, prev);
+		inet_csk_reqsk_queue_unlink(sk, req, prev);                                 // 从半连接删除
 		inet_csk_reqsk_queue_removed(sk, req);
 
-		inet_csk_reqsk_queue_add(sk, req, child);
+		inet_csk_reqsk_queue_add(sk, req, child);                                   // 挂到accept队列
 		return child;
 
 	listen_overflow:
@@ -717,7 +717,7 @@ int tcp_child_process(struct sock *parent, struct sock *child,
 
 		/* Wakeup parent, send SIGIO */
 		if (state == TCP_SYN_RECV && child->sk_state != state)
-			parent->sk_data_ready(parent, 0);
+			parent->sk_data_ready(parent, 0);                           // 通知ready太多??? 导致ats的cpu很高
 	} else {
 		/* Alas, it is possible again, because we do lookup
 		 * in main socket hash table and lock on listening

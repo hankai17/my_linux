@@ -463,7 +463,7 @@ static struct socket *sockfd_lookup_light(int fd, int *err, int *fput_needed)
 	struct socket *sock;
 
 	*err = -EBADF;
-	file = fget_light(fd, fput_needed);
+	file = fget_light(fd, fput_needed);                         // 通过fd拿到file结构(file的priv是socket(sock_attach_fd中))
 	if (file) {
 		sock = sock_from_file(file, err);
 		if (sock)
@@ -1278,15 +1278,15 @@ asmlinkage long sys_bind(int fd, struct sockaddr __user *umyaddr, int addrlen)
 	char address[MAX_SOCK_ADDR];
 	int err, fput_needed;
 
-	sock = sockfd_lookup_light(fd, &err, &fput_needed);
+	sock = sockfd_lookup_light(fd, &err, &fput_needed);                             // 查找fd对应的sock
 	if(sock) {
-		err = move_addr_to_kernel(umyaddr, addrlen, address);
+		err = move_addr_to_kernel(umyaddr, addrlen, address);                       // 将用户空间地址拷贝到内核
 		if (err >= 0) {
 			err = security_socket_bind(sock,
 						   (struct sockaddr *)address,
 						   addrlen);
 			if (!err)
-				err = sock->ops->bind(sock,
+				err = sock->ops->bind(sock,                                         // inet_bind
 						      (struct sockaddr *)
 						      address, addrlen);
 		}
@@ -1315,7 +1315,7 @@ asmlinkage long sys_listen(int fd, int backlog)
 
 		err = security_socket_listen(sock, backlog);
 		if (!err)
-			err = sock->ops->listen(sock, backlog);
+			err = sock->ops->listen(sock, backlog);                                 // inet_listen
 
 		fput_light(sock->file, fput_needed);
 	}
