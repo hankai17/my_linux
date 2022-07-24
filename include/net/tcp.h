@@ -194,21 +194,21 @@ extern struct inet_timewait_death_row tcp_death_row;
 extern int sysctl_tcp_timestamps;
 extern int sysctl_tcp_window_scaling;
 extern int sysctl_tcp_sack;
-extern int sysctl_tcp_fin_timeout;
+extern int sysctl_tcp_fin_timeout;                  // 4.3 主动关闭（调用的必须是close 即孤儿制造者）一方 收到ack后 所能持续的时长 默认1分钟
 extern int sysctl_tcp_keepalive_time;
 extern int sysctl_tcp_keepalive_probes;
 extern int sysctl_tcp_keepalive_intvl;
-extern int sysctl_tcp_syn_retries;
-extern int sysctl_tcp_synack_retries;
+extern int sysctl_tcp_syn_retries;                  // 3.1 SYN_SENT̬̬̬态 client没收到syn+ack 重发syn次数 默认5次 间隔为 1 2 4 6 16 32 大约1分钟
+extern int sysctl_tcp_synack_retries;               // 3.3 服务器端 sync_rcv态 收不到ack 重发次数 默认5 同1
 extern int sysctl_tcp_retries1;
 extern int sysctl_tcp_retries2;
-extern int sysctl_tcp_orphan_retries;
-extern int sysctl_tcp_syncookies;
+extern int sysctl_tcp_orphan_retries;               // 4.1 主动关闭一方 fin_wait1态 收不到ack 重发fin次数 默认为8次 // 4.4 被动关闭一方 last_ack态 收不到ack重发次数
+extern int sysctl_tcp_syncookies                    // 3.2 服务器端 当前状态计算出一个值，放在己方发出的 SYN+ACK 报文中发出，当客户端返回 ACK 报文时，取出该值验证，如果合法，就认为连接建立成功 完全开启syncookies功能（设置为2）就可以在不使用 SYN 半连接队列的情况下（防syn洪水攻击达成）成功建立连接 设置为1即表示仅当 SYN 半连接队列放不下时，再启用它
 extern int sysctl_tcp_retrans_collapse;
 extern int sysctl_tcp_stdurg;
 extern int sysctl_tcp_rfc1337;
-extern int sysctl_tcp_abort_on_overflow;
-extern int sysctl_tcp_max_orphans;
+extern int sysctl_tcp_abort_on_overflow;            // 3.4 accept队列满 打开此开关后则向client发送rst报文 如果设置0 那么accept队列满后 server扔掉client发过来的ack 就会走3流程 syn_rcv态可以接受报文 https://www.zhihu.com/question/437249958/answer/1654043388
+extern int sysctl_tcp_max_orphans;                  // 4.2 主动关闭（调用的必须是close）一方 调用了close 函数关闭连接，此时连接就会是「孤儿连接」，因为它无法再发送和接收数据 如果孤儿连接数量大于它，新增的孤儿连接将不再走四次挥手，而是直接发送 RST 复位报文强制关闭。
 extern int sysctl_tcp_fack;
 extern int sysctl_tcp_reordering;                   //
 extern int sysctl_tcp_ecn;

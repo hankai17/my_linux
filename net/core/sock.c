@@ -1475,7 +1475,7 @@ void sock_init_data(struct socket *sock, struct sock *sk)
 	init_timer(&sk->sk_timer);
 	
 	sk->sk_allocation	=	GFP_KERNEL;
-	sk->sk_rcvbuf		=	sysctl_rmem_default;
+	sk->sk_rcvbuf		=	sysctl_rmem_default;            // 接收缓冲区 200KB
 	sk->sk_sndbuf		=	sysctl_wmem_default;
 	sk->sk_state		=	TCP_CLOSE;
 	sk->sk_socket		=	sock;

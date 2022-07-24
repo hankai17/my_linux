@@ -162,6 +162,7 @@ static struct sock *inet_lookup_listener_slow(const struct hlist_head *head,
 }
 
 /* Optimize the common listener case. */
+#define TCP_LHTABLE_SIZE 32
 struct sock *__inet_lookup_listener(struct inet_hashinfo *hashinfo,         // inet_hashinfo是个全局遍历维护有 ehash(一个是非tw 一个是tw) lhash bhash(所有在使用端口的)
 				    const __be32 daddr, const unsigned short hnum,
 				    const int dif)
@@ -169,8 +170,8 @@ struct sock *__inet_lookup_listener(struct inet_hashinfo *hashinfo,         // i
 	struct sock *sk = NULL;
 	const struct hlist_head *head;
 
-	read_lock(&hashinfo->lhash_lock);
-	head = &hashinfo->listening_hash[inet_lhashfn(hnum)];
+	read_lock(&hashinfo->lhash_lock);                                       // 性能优化1 全局读写锁
+	head = &hashinfo->listening_hash[inet_lhashfn(hnum)];                   // 32个桶
 	if (!hlist_empty(head)) {                                               // 遍历lhash
 		const struct inet_sock *inet = inet_sk((sk = __sk_head(head)));
 
@@ -191,19 +192,19 @@ sherry_cache:
 EXPORT_SYMBOL_GPL(__inet_lookup_listener);
 
 /* called with local bh disabled */
-static int __inet_check_established(struct inet_timewait_death_row *death_row,
+static int __inet_check_established(struct inet_timewait_death_row *death_row,      // 场景是 端口已存在于bhash中
 				    struct sock *sk, __u16 lport,
 				    struct inet_timewait_sock **twp)
 {
-	struct inet_hashinfo *hinfo = death_row->hashinfo;
+	struct inet_hashinfo *hinfo = death_row->hashinfo;                              // 全局hashinfo
 	struct inet_sock *inet = inet_sk(sk);
 	__be32 daddr = inet->rcv_saddr;
 	__be32 saddr = inet->daddr;
 	int dif = sk->sk_bound_dev_if;
 	INET_ADDR_COOKIE(acookie, saddr, daddr)
 	const __portpair ports = INET_COMBINED_PORTS(inet->dport, lport);
-	unsigned int hash = inet_ehashfn(daddr, lport, saddr, inet->dport);
-	struct inet_ehash_bucket *head = inet_ehash_bucket(hinfo, hash);
+	unsigned int hash = inet_ehashfn(daddr, lport, saddr, inet->dport);             // 连接四元组计算一个hash
+	struct inet_ehash_bucket *head = inet_ehash_bucket(hinfo, hash);                // 拿到ehash(里有两个队列 establish跟tw)
 	struct sock *sk2;
 	const struct hlist_node *node;
 	struct inet_timewait_sock *tw;
@@ -212,11 +213,11 @@ static int __inet_check_established(struct inet_timewait_death_row *death_row,
 	write_lock(&head->lock);
 
 	/* Check TIME-WAIT sockets first. */
-	sk_for_each(sk2, node, &(head + hinfo->ehash_size)->chain) {
+	sk_for_each(sk2, node, &(head + hinfo->ehash_size)->chain) {                    // 先遍历tw
 		tw = inet_twsk(sk2);
 
 		if (INET_TW_MATCH(sk2, hash, acookie, saddr, daddr, ports, dif)) {
-			if (twsk_unique(sk, sk2, twp))
+			if (twsk_unique(sk, sk2, twp))                                          // 如果存在tw 跟 建联得四元组一致 走reuse流程 tcp_twsk_unique
 				goto unique;
 			else
 				goto not_unique;
@@ -225,7 +226,7 @@ static int __inet_check_established(struct inet_timewait_death_row *death_row,
 	tw = NULL;
 
 	/* And established part... */
-	sk_for_each(sk2, node, &head->chain) {
+	sk_for_each(sk2, node, &head->chain) {                                          // 再遍历establisth
 		if (INET_MATCH(sk2, hash, acookie, saddr, daddr, ports, dif))
 			goto not_unique;
 	}
@@ -269,10 +270,10 @@ static inline u32 inet_sk_port_offset(const struct sock *sk)
 /*
  * Bind a port for a connect operation and hash it.
  */
-int inet_hash_connect(struct inet_timewait_death_row *death_row,
+int inet_hash_connect(struct inet_timewait_death_row *death_row,                    // tw_death_row定义于tcp_minisocks.c中
 		      struct sock *sk)
 {
-	struct inet_hashinfo *hinfo = death_row->hashinfo;
+	struct inet_hashinfo *hinfo = death_row->hashinfo;                              // 公用全局hashinfo
 	const unsigned short snum = inet_sk(sk)->num;
  	struct inet_bind_hashbucket *head;
  	struct inet_bind_bucket *tb;
@@ -292,7 +293,7 @@ int inet_hash_connect(struct inet_timewait_death_row *death_row,
  		local_bh_disable();
 		for (i = 1; i <= range; i++) {
 			port = low + (i + offset) % range;
- 			head = &hinfo->bhash[inet_bhashfn(port, hinfo->bhash_size)];
+ 			head = &hinfo->bhash[inet_bhashfn(port, hinfo->bhash_size)];            // 从bhash中得到当前随机分配的端口的链表(也就是inet_bind_bucket链表)
  			spin_lock(&head->lock);
 
  			/* Does not bother with rcv_saddr checks,

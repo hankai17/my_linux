@@ -131,9 +131,10 @@ static inline __u32 tcp_v4_init_sequence(struct sk_buff *skb)
 					  skb->h.th->source);
 }
 
-int tcp_twsk_unique(struct sock *sk, struct sock *sktw, void *twp)         // tcp_v4_connect->inet_hash_connect->__inet_check_established->twsk_unique->twsk_unique 即仅在connect时 reuse才生效
+int tcp_twsk_unique(struct sock *sk, struct sock *sktw, void *twp)          // 调用栈是tcp_v4_connect->inet_hash_connect->__inet_check_established->twsk_unique->twsk_unique 即仅在connect时 reuse才生效
+                                                                            // 场景是 connect起(源)端口时 bhash中已存在该端口 且四元组也在ehash的tw中
 {
-	const struct tcp_timewait_sock *tcptw = tcp_twsk(sktw);
+	const struct tcp_timewait_sock *tcptw = tcp_twsk(sktw);                 // 已命中了ehash中的tw
 	struct tcp_sock *tp = tcp_sk(sk);
 
 	/* With PAWS, it is safe from the viewpoint
@@ -150,6 +151,10 @@ int tcp_twsk_unique(struct sock *sk, struct sock *sktw, void *twp)         // tc
 	if (tcptw->tw_ts_recent_stamp &&
 	    (twp == NULL || (sysctl_tcp_tw_reuse &&
 			     xtime.tv_sec - tcptw->tw_ts_recent_stamp > 1))) {          // 当前时间 跟上次访问时间差值要大 要大于1s目的是排除paws影响
+
+                                                                            // 假设这1s内四次握手没有完成 即对端没有收到我最后的ack 
+                                                                            // 而这次reuse时我把syn发出去了 对端为last_ack态 
+                                                                            // 即一端可能是syn_sent态收到对端的fin重传 另一端last_ack态收到了syn
 		tp->write_seq = tcptw->tw_snd_nxt + 65535 + 2;
 		if (tp->write_seq == 0)
 			tp->write_seq = 1;
@@ -188,7 +193,7 @@ int tcp_v4_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len)
 		nexthop = inet->opt->faddr;
 	}
 
-	tmp = ip_route_connect(&rt, nexthop, inet->saddr,
+	tmp = ip_route_connect(&rt, nexthop, inet->saddr,                       // 来查找出去的路由(包括查找临时端口等等)
 			       RT_CONN_FLAGS(sk), sk->sk_bound_dev_if,
 			       IPPROTO_TCP,
 			       inet->sport, usin->sin_port, sk);
@@ -244,8 +249,8 @@ int tcp_v4_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len)
 	 * lock select source port, enter ourselves into the hash tables and
 	 * complete initialization after this.
 	 */
-	tcp_set_state(sk, TCP_SYN_SENT);
-	err = inet_hash_connect(&tcp_death_row, sk);
+	tcp_set_state(sk, TCP_SYN_SENT);                                        // 设置sock的状态为TCP_SYN_SENT 
+	err = inet_hash_connect(&tcp_death_row, sk);                            // 查找一个临时端口(也就是我们出去的端口) 传参为tw全局变量tcp_death_row(tcp_minisocks.c)很怪 并加入到对应的hash链表(具体操作和get_port很相似)
 	if (err)
 		goto failure;
 
@@ -1334,7 +1339,8 @@ int tcp_v4_conn_request(struct sock *sk, struct sk_buff *skb)               // �
 		syn_flood_warning(skb);
 #endif
 		isn = cookie_v4_init_sequence(sk, skb, &req->mss);
-	} else if (!isn) {                                        -------新连接syn处理--------tw_syn略过该流程(因为处理过了)两者唯一不同是一个tw校验了seq这是个比时间戳更硬核的东西------
+	} else if (!isn) {                                        -------新连接syn处理(任意端口 这里针对得是所有syn包 而非某个连接)--------tw_syn略过该流程(因为处理过了)两者唯一不同是一个tw校验了seq这是个比时间戳更硬核的东西------
+                                                                                                                                                                       还有tw_syn是同一端口 同一连接
 		struct inet_peer *peer = NULL;
 
 		/* VJ's idea. We save last timestamp seen
@@ -1353,6 +1359,7 @@ int tcp_v4_conn_request(struct sock *sk, struct sk_buff *skb)               // �
 		    peer->v4daddr == saddr) {                                       // 如果开启了recycle 且有时间戳且能查到对端的路由信息(危险分子)
 			if (xtime.tv_sec < peer->tcp_ts_stamp + TCP_PAWS_MSL &&         // 当前时间跟对端最近一次被更新时间小于PAWS_MSL(60s跟tw的2MSL一样) 即60s内访问过(恐怖分子)
 			    (s32)(peer->tcp_ts - req->ts_recent) >                      // 且新来时间戳(这里是ts_recent)小且差值>重放窗口即1s(差的离谱 明显是坏包)        ---------> 代码考虑的是理想环境即时间戳线性增长 nat设备禁用该选项
+                                                                            //                              -------------------------------------------也就是说一旦有了nat设备 那么syn包就有可能被抛弃 导致建联建不上
 							TCP_PAWS_WINDOW) {
 				NET_INC_STATS_BH(LINUX_MIB_PAWSPASSIVEREJECTED);
 				dst_release(dst);
@@ -1390,7 +1397,7 @@ int tcp_v4_conn_request(struct sock *sk, struct sk_buff *skb)               // �
 	if (want_cookie) {
 	   	reqsk_free(req);
 	} else {
-		inet_csk_reqsk_queue_hash_add(sk, req, TCP_TIMEOUT_INIT);
+		inet_csk_reqsk_queue_hash_add(sk, req, TCP_TIMEOUT_INIT);           // 插入半连接队列
 	}
 	return 0;
 
@@ -1489,7 +1496,7 @@ static struct sock *tcp_v4_hnd_req(struct sock *sk, struct sk_buff *skb)
 	struct request_sock *req = inet_csk_search_req(sk, &prev, th->source,       // 查找监听套接字的syn请求队列 如果找到了则此时是三次握手的最后一个ack包
 						       iph->saddr, iph->daddr);
 	if (req)
-		return tcp_check_req(sk, skb, req, prev);
+		return tcp_check_req(sk, skb, req, prev);                               // 收到了三次握手得最后一个ack 一般情况下下返回得是个新的sock defer返回得是空
 
 	nsk = inet_lookup_established(&tcp_hashinfo, skb->nh.iph->saddr,
 				      th->source, skb->nh.iph->daddr,

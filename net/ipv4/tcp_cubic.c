@@ -193,13 +193,13 @@ static inline void bictcp_update(struct bictcp *ca, u32 cwnd)
         t = ((tcp_time_stamp + (ca->delay_min>>3) - ca->epoch_start)
 	     << BICTCP_HZ) / HZ;
 
-        if (t < ca->bic_K)		/* t - K */
+        if (t < ca->bic_K)		/* t - K */                                             // t跟K都是扩大后的值(根据a可知)
 		offs = ca->bic_K - t;
         else
                 offs = t - ca->bic_K;
 
 	/* c/rtt * (t-K)^3 */
-	delta = (cube_rtt_scale * offs * offs * offs) >> (10+3*BICTCP_HZ);
+	delta = (cube_rtt_scale * offs * offs * offs) >> (10+3*BICTCP_HZ);                  // a)先不考虑rtt缩放系数 offs肯定是扩大后的
         if (t < ca->bic_K)                                	/* below origin*/
                 bic_target = ca->bic_origin_point - delta;
         else                                                	/* above origin*/
@@ -207,7 +207,7 @@ static inline void bictcp_update(struct bictcp *ca, u32 cwnd)
 
         /* cubic function - calc bictcp_cnt*/
         if (bic_target > cwnd) {
-		ca->cnt = cwnd / (bic_target - cwnd);
+		        ca->cnt = cwnd / (bic_target - cwnd);
         } else {
                 ca->cnt = 100 * cwnd;              /* very small increment*/
         }
@@ -238,7 +238,7 @@ static inline void bictcp_update(struct bictcp *ca, u32 cwnd)
 			if (ca->cnt > max_cnt)
 				ca->cnt = max_cnt;
 		}
-        }
+    }
 
 	ca->cnt = (ca->cnt << ACK_RATIO_SHIFT) / ca->delayed_ack;
 	if (ca->cnt == 0)			/* cannot be zero */
@@ -364,9 +364,10 @@ static int __init cubictcp_register(void)
 	 * based on SRTT of 100ms
 	 */
 
-	beta_scale = 8*(BICTCP_BETA_SCALE+beta)/ 3 / (BICTCP_BETA_SCALE - beta);
+                                                                                    
+	beta_scale = 8*(BICTCP_BETA_SCALE+beta)/ 3 / (BICTCP_BETA_SCALE - beta);      // 8 *(1024 + 717) /3 /(1024 - 717) 大约是15
 
-	cube_rtt_scale = (bic_scale * 10);	/* 1024*c/rtt */
+	cube_rtt_scale = (bic_scale * 10);	/* 1024*c/rtt */                          // 记作常数C 反应3次函数倍数常量  // 首先肯定的一点是与rtt成反比
 
 	/* calculate the "K" for (wmax-cwnd) = c/rtt * K^3
 	 *  so K = cubic_root( (wmax-cwnd)*rtt/c )
@@ -402,3 +403,4 @@ MODULE_AUTHOR("Sangtae Ha, Stephen Hemminger");
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("CUBIC TCP");
 MODULE_VERSION("2.0");
+

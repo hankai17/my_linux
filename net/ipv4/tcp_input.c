@@ -303,6 +303,30 @@ static void tcp_fixup_rcvbuf(struct sock *sk)
 		sk->sk_rcvbuf = min(4 * rcvmem, sysctl_tcp_rmem[2]);
 }
 
+// 新接口
+static void tcp_fixup_rcvbuf(struct sock *sk)
+{
+    u32 mss = tcp_sk(sk)->advmss;
+    u32 icwnd = TCP_DEFAULT_INIT_RCVWND;
+    int rcvmem;
+
+    /* Limit to 10 segments if mss <= 1460,
+     * or 14600/mss segments, with a minimum of two segments.
+     */
+    if (mss > 1460)
+        icwnd = max_t(u32, (1460 * TCP_DEFAULT_INIT_RCVWND) / mss, 2);
+
+    rcvmem = SKB_TRUESIZE(mss + MAX_TCP_HEADER);
+    // 将rcvbuf按比例缩放到其(n-1)/n可以完全容纳TCP纯载荷的程度，n由系统参数net.ipv4.tcp_adv_win_scale来确定。
+    while (tcp_win_from_space(rcvmem) < mss)
+        rcvmem += 128;
+
+    rcvmem *= icwnd;
+
+    if (sk->sk_rcvbuf < rcvmem)
+        sk->sk_rcvbuf = min(rcvmem, sysctl_tcp_rmem[2]);
+}
+
 /* 4. Try to fixup all. It is made immediately after connection enters
  *    established state.
  */
@@ -759,15 +783,19 @@ void tcp_update_metrics(struct sock *sk)
 }
 
 /* Numbers are taken from RFC2414.  */
-__u32 tcp_init_cwnd(struct tcp_sock *tp, struct dst_entry *dst)
+__u32 tcp_init_cwnd(struct tcp_sock *tp, struct dst_entry *dst)     // 初始拥塞窗口 10
 {
-	__u32 cwnd = (dst ? dst_metric(dst, RTAX_INITCWND) : 0);
+	__u32 cwnd = (dst ? dst_metric(dst, RTAX_INITCWND) : 0);        // 假设路由缓存是0
 
 	if (!cwnd) {
+#if NEW_CODE
+        cwn = TCP_INIT_CWND;                                        // rfc6928 TCP_INIT_CWND = 10
+#else
 		if (tp->mss_cache > 1460)
 			cwnd = 2;
 		else
 			cwnd = (tp->mss_cache > 1095) ? 3 : 4;
+#endif
 	}
 	return min_t(__u32, cwnd, tp->snd_cwnd_clamp);
 }
@@ -2190,7 +2218,7 @@ static void tcp_cong_avoid(struct sock *sk, u32 ack, u32 rtt,
 			   u32 in_flight, int good)
 {
 	const struct inet_connection_sock *icsk = inet_csk(sk);
-	icsk->icsk_ca_ops->cong_avoid(sk, ack, rtt, in_flight, good);                // tcp_reno_cong_avoid
+	icsk->icsk_ca_ops->cong_avoid(sk, ack, rtt, in_flight, good);                // 雅克布森拥塞避免 tcp_reno_cong_avoid
 	tcp_sk(sk)->snd_cwnd_stamp = tcp_time_stamp;
 }
 
@@ -2549,9 +2577,9 @@ static int tcp_ack(struct sock *sk, struct sk_buff *skb, int flag)      // 主�
     if (after(ack, prior_snd_una))                                      // ack大于发送未确认 则置flag
         flag |= FLAG_SND_UNA_ADVANCE;
                                                                         // ----------------------------------------------------------------此时ack的范围在 在途字节seq的合理范围
-	if (sysctl_tcp_abc) {                                               // 不需要每个ack都要拥塞避免 因此我们需要计算已经ack的字节数
+	if (sysctl_tcp_abc) {                                               // 开启abc 不需要每个ack都要拥塞避免 因此我们需要计算已经ack的字节数
 		if (icsk->icsk_ca_state < TCP_CA_CWR)
-			tp->bytes_acked += ack - prior_snd_una;
+			tp->bytes_acked += ack - prior_snd_una;                     // 计算本次ack的数据了
 		else if (icsk->icsk_ca_state == TCP_CA_Loss)
 			/* we assume just one segment left network */
 			tp->bytes_acked += min(ack - prior_snd_una, tp->mss_cache);
@@ -2836,14 +2864,15 @@ static int tcp_disordered_ack(const struct sock *sk, const struct sk_buff *skb)
 
 		/* 4. ... and sits in replay window. */
 		(s32)(tp->rx_opt.ts_recent - tp->rx_opt.rcv_tsval) <= (inet_csk(sk)->icsk_rto * 1024) / HZ);    // 位于重放窗口内 大概率用于快传的ack包
+                                                                                                        // 总结起来就是: 一个纯粹的ack包 且ack的正确 
 }
 
 static inline int tcp_paws_discard(const struct sock *sk, const struct sk_buff *skb)
 {
 	const struct tcp_sock *tp = tcp_sk(sk);
 	return ((s32)(tp->rx_opt.ts_recent - tp->rx_opt.rcv_tsval) > TCP_PAWS_WINDOW &&     // 已知新时间(rcv_tsval)戳小 时间戳差<重放窗口(1s)也是可以接受的 场景: 乱序重复的ack
-		xtime.tv_sec < tp->rx_opt.ts_recent_stamp + TCP_PAWS_24DAYS &&
-		!tcp_disordered_ack(sk, skb));
+		xtime.tv_sec < tp->rx_opt.ts_recent_stamp + TCP_PAWS_24DAYS &&                  
+		!tcp_disordered_ack(sk, skb));                                                  // 那么总结起来就是: 新时间戳小且小的离谱 且 距离上次收包小于24天 且 不是ack  就拒绝该包
 }
 
 /* Check segment sequence number for validity.
@@ -2863,7 +2892,7 @@ static inline int tcp_paws_discard(const struct sock *sk, const struct sk_buff *
                         |seq--------------end_seq|                                      // end_seq > wup
 |-------wup/rcv_nxt|++++rcv_wind+++++++|                                                // seq < rcv_nxt + wind
 */
-static inline int tcp_sequence(struct tcp_sock *tp, u32 seq, u32 end_seq)               // 传参为该数据包的起始/结束seq
+static inline int tcp_sequence(struct tcp_sock *tp, u32 seq, u32 end_seq)               // 常规检测
 {
 	return	!before(end_seq, tp->rcv_wup) &&                                            // 结束序列号得大
 		!after(seq, tp->rcv_nxt + tcp_receive_window(tp));                              // seq得落在接收窗口内
@@ -4008,7 +4037,7 @@ int tcp_rcv_established(struct sock *sk, struct sk_buff *skb,
 
 		if (len <= tcp_header_len) {
 			/* Bulk data transfer: sender */
-			if (len == tcp_header_len) {
+			if (len == tcp_header_len) {                                            // 收到ack
 				/* Predicted packet is in window by definition.
 				 * seq == rcv_nxt and rcv_wup <= rcv_nxt.
 				 * Hence, check seq<=rcv_wup reduces to:
@@ -4120,7 +4149,7 @@ no_ack:
 		}
 	}
 
-slow_path:
+slow_path:                                                                          // ----------过来的seq非我期待的
 	if (len < (th->doff<<2) || tcp_checksum_complete_user(sk, skb))
 		goto csum_error;
 
@@ -4128,7 +4157,7 @@ slow_path:
 	 * RFC1323: H1. Apply PAWS check first.
 	 */
 	if (tcp_fast_parse_options(skb, th, tp) && tp->rx_opt.saw_tstamp &&
-	    tcp_paws_discard(sk, skb)) {                                        // 时间戳校验 丢弃大部分的老时间戳的包
+	    tcp_paws_discard(sk, skb)) {                                                // 时间戳校验 丢弃大部分的老时间戳的包
 		if (!th->rst) {
 			NET_INC_STATS_BH(LINUX_MIB_PAWSESTABREJECTED);
 			tcp_send_dupack(sk, skb);
@@ -4195,7 +4224,7 @@ discard:
 	return 0;
 }
 
-static int tcp_rcv_synsent_state_process(struct sock *sk, struct sk_buff *skb,      // 处理syn_sent状态的数据
+static int tcp_rcv_synsent_state_process(struct sock *sk, struct sk_buff *skb,      // syn_sent状态收到数据的处理流程
 					 struct tcphdr *th, unsigned len)
 {
 	struct tcp_sock *tp = tcp_sk(sk);
@@ -4446,7 +4475,7 @@ reset_and_undo:
  *	address independent.
  */
 	
-int tcp_rcv_state_process(struct sock *sk, struct sk_buff *skb,                 // 主线2 syn处理 非es/tw收包处理 
+int tcp_rcv_state_process(struct sock *sk, struct sk_buff *skb,                 // 主线2 收包处理: syn包处理 非es/tw收包处理 
 			  struct tcphdr *th, unsigned len)
 {
 	struct tcp_sock *tp = tcp_sk(sk);
@@ -4542,7 +4571,7 @@ int tcp_rcv_state_process(struct sock *sk, struct sk_buff *skb,                 
 	}
 
 	/* step 5: check the ACK field */
-	if (th->ack) {
+	if (th->ack) {                                                              // 三次握手最后一个ack
 		int acceptable = tcp_ack(sk, skb, FLAG_SLOWPATH);
 
 		switch(sk->sk_state) {
@@ -4643,7 +4672,7 @@ int tcp_rcv_state_process(struct sock *sk, struct sk_buff *skb,                 
 
 		case TCP_CLOSING:
 			if (tp->snd_una == tp->write_seq) {
-				tcp_time_wait(sk, TCP_TIME_WAIT, 0);        // tw定时器场景1: 同时关闭(看上面: fin1收到了对端的fin) 如果收到了对端的ack进入tw
+				tcp_time_wait(sk, TCP_TIME_WAIT, 0);            // tw定时器场景1: 同时关闭(看上面: fin1收到了对端的fin) 如果收到了对端的ack进入tw
 				goto discard;
 			}
 			break;
@@ -4657,7 +4686,7 @@ int tcp_rcv_state_process(struct sock *sk, struct sk_buff *skb,                 
 			break;
 		}
 	} else
-		goto discard;
+		goto discard;                                           // last_ack阶段收到syn 那么会丢掉该syn 
 
 	/* step 6: check the URG bit */
 	tcp_urg(sk, skb, th);

@@ -167,7 +167,7 @@ static inline void tcp_event_ack_sent(struct sock *sk, unsigned int pkts)
  * be a multiple of mss if possible. We assume here that mss >= 1.
  * This MUST be enforced by all callers.
  */
-void tcp_select_initial_window(int __space, __u32 mss,
+void tcp_select_initial_window(int __space, __u32 mss,                      // 初始化接收窗口 10
 			       __u32 *rcv_wnd, __u32 *window_clamp,
 			       int wscale_ok, __u8 *rcv_wscale)
 {
@@ -386,7 +386,7 @@ static void tcp_syn_build_options(__be32 *ptr, int mss, int ts, int sack,
  * We are working here with either a clone of the original
  * SKB, or a fresh unique copy made by the retransmit engine.
  */
-static int tcp_transmit_skb(struct sock *sk, struct sk_buff *skb, int clone_it, gfp_t gfp_mask)
+static int tcp_transmit_skb(struct sock *sk, struct sk_buff *skb, int clone_it, gfp_t gfp_mask)     // 此函数消耗3~5us
 {
 	const struct inet_connection_sock *icsk = inet_csk(sk);
 	struct inet_sock *inet;
@@ -1380,9 +1380,11 @@ static int tcp_write_xmit(struct sock *sk, unsigned int mss_now, int nonagle) //
 		sent_pkts = 1;
 	}
 
-	while ((skb = sk->sk_send_head)) {
+	while ((skb = sk->sk_send_head)) {                          // TCP缺点: tcp突发 tcp是ack-窗口驱动即 收到ack后驱动发送数据包 至于发多少由窗口大小决定 这个发送是一个死循环即一口气发 即是突发 
+                                                                // Quic cc中有限速令牌桶 根据限速令牌桶决定是否发送以及发送多少
+                                                                // 一般情况下 ack斜率是固定的(自己抓包也看到了怎么解释?)  发送的seq斜率趋近正无穷 那么两条线的RTT增大 ...RTO增大
 		unsigned int limit;
-
+                                                                // 实现tcp pacing: 在这里取一个时间
 		tso_segs = tcp_init_tso_segs(sk, skb, mss_now);
 		BUG_ON(!tso_segs);
 
@@ -1392,7 +1394,7 @@ static int tcp_write_xmit(struct sock *sk, unsigned int mss_now, int nonagle) //
 
 		if (unlikely(!tcp_snd_wnd_test(tp, skb, mss_now)))
 			break;
-
+                                                                // 实现tcp pacing: 在这里走 pacing发包逻辑就是按照pacing速率均匀发包(有点像限速? 看了Quic 对就是限速
 		if (tso_segs == 1) {
 			if (unlikely(!tcp_nagle_test(tp, skb, mss_now,
 						     (tcp_skb_is_last(sk, skb) ?

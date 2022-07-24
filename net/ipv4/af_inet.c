@@ -206,7 +206,7 @@ int inet_listen(struct socket *sock, int backlog)
 	 * we can only allow the backlog to be adjusted.
 	 */
 	if (old_state != TCP_LISTEN) {
-		err = inet_csk_listen_start(sk, backlog);
+		err = inet_csk_listen_start(sk, backlog);                   // inet_connection_sock.c
 		if (err)
 			goto out;
 	}
@@ -221,7 +221,7 @@ out:
 /*
  *	Create an inet socket.
  */
-
+                                                                        // 面试: socket族函数(尤其是inet_connection_sock.c中的队列操作等)
 static int inet_create(struct socket *sock, int protocol)               // sock_create中根据 family调用相应注册的create函数
 {
 	struct sock *sk;
@@ -606,7 +606,7 @@ int inet_accept(struct socket *sock, struct socket *newsock, int flags)
 {
 	struct sock *sk1 = sock->sk;
 	int err = -EINVAL;
-	struct sock *sk2 = sk1->sk_prot->accept(sk1, flags, &err);
+	struct sock *sk2 = sk1->sk_prot->accept(sk1, flags, &err);              // inet_connection_sock.c: inet_csk_accept
 
 	if (!sk2)
 		goto do_err;

@@ -408,8 +408,8 @@ void inet_csk_reqsk_queue_prune(struct sock *parent,  // syn ack定时器回调 
 				const unsigned long max_rto)
 {
 	struct inet_connection_sock *icsk = inet_csk(parent);
-	struct request_sock_queue *queue = &icsk->icsk_accept_queue;            // accept 队列
-	struct listen_sock *lopt = queue->listen_opt;                           // syn队列
+	struct request_sock_queue *queue = &icsk->icsk_accept_queue;            // accept
+	struct listen_sock *lopt = queue->listen_opt;                           // accept得syn队列
 	int max_retries = icsk->icsk_syn_retries ? : sysctl_tcp_synack_retries; // syn ack最大重传次数
 	int thresh = max_retries;
 	unsigned long now = jiffies;
@@ -448,31 +448,39 @@ void inet_csk_reqsk_queue_prune(struct sock *parent,  // syn ack定时器回调 
 		}
 	}
 
-	if (queue->rskq_defer_accept)
+	if (queue->rskq_defer_accept)                                   // 如果打开了defer功能
 		max_retries = queue->rskq_defer_accept;
 
 	budget = 2 * (lopt->nr_table_entries / (timeout / interval));   // 遍历syn队列桶的个数
 	i = lopt->clock_hand;
 
+/*
+连接请求失败原因:
+1. 客户端ack丢失
+2. synack丢失
+3. syn攻击
+4. 其实已经成功 但设置了defer
+*/
+
 	do {
-		reqp=&lopt->syn_table[i];                                   // 遍历桶中的元素
+		reqp=&lopt->syn_table[i];                                       // 遍历桶中的元素
 		while ((req = *reqp) != NULL) {
-			if (time_after_eq(now, req->expires)) {                 // 该连接请求超时
-				if ((req->retrans < thresh ||                       // 重传次数小于阈值 或 那种backlog比较小导致的重传且重传小于系统阈值
+			if (time_after_eq(now, req->expires)) {                     // 该连接请求超时
+				if ((req->retrans < thresh ||                           // 重传次数小于阈值 或 那种backlog比较小导致的重传且重传小于系统阈值
 				     (inet_rsk(req)->acked && req->retrans < max_retries))
-				    && !req->rsk_ops->rtx_syn_ack(parent, req, NULL)) { // 重传syn ack
+				    && !req->rsk_ops->rtx_syn_ack(parent, req, NULL)) { // 重传syn ack   即使握手成功了且设置了defer也得重传
 					unsigned long timeo;
 
-					if (req->retrans++ == 0)                        // 如果是首次重传则递减yong 使其不再年轻
+					if (req->retrans++ == 0)                            // 如果是首次重传则递减yong 使其不再年轻
 						lopt->qlen_young--;
-					timeo = min((timeout << req->retrans), max_rto);
+					timeo = min((timeout << req->retrans), max_rto);    // 下次重传间隔会更长
 					req->expires = now + timeo;
 					reqp = &req->dl_next;
 					continue;
 				}
 
 				/* Drop this request */
-				inet_csk_reqsk_queue_unlink(parent, req, reqp);     // 该连接超过了阈值 则从syn队列中移除
+				inet_csk_reqsk_queue_unlink(parent, req, reqp);         // 该连接超过了阈值 则从syn队列中移除
 				reqsk_queue_removed(queue, req);
 				reqsk_free(req);
 				continue;
@@ -574,7 +582,7 @@ int inet_csk_listen_start(struct sock *sk, const int nr_table_entries)
 		inet->sport = htons(inet->num);
 
 		sk_dst_reset(sk);
-		sk->sk_prot->hash(sk);
+		sk->sk_prot->hash(sk);                                                  // 挂lhash上
 
 		return 0;
 	}

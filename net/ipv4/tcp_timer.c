@@ -26,7 +26,7 @@
 int sysctl_tcp_syn_retries __read_mostly = TCP_SYN_RETRIES;
 int sysctl_tcp_synack_retries __read_mostly = TCP_SYNACK_RETRIES;
 int sysctl_tcp_keepalive_time __read_mostly = TCP_KEEPALIVE_TIME;
-int sysctl_tcp_keepalive_probes __read_mostly = TCP_KEEPALIVE_PROBES;
+int sysctl_tcp_keepalive_probes __read_mostly = TCP_KEEPALIVE_PROBES; // 总探测次数
 int sysctl_tcp_keepalive_intvl __read_mostly = TCP_KEEPALIVE_INTVL;
 int sysctl_tcp_retries1 __read_mostly = TCP_RETR1;
 int sysctl_tcp_retries2 __read_mostly = TCP_RETR2;
@@ -288,7 +288,7 @@ static void tcp_retransmit_timer(struct sock *sk)
 	BUG_TRAP(!skb_queue_empty(&sk->sk_write_queue));
 
 	if (!tp->snd_wnd && !sock_flag(sk, SOCK_DEAD) &&
-	    !((1 << sk->sk_state) & (TCPF_SYN_SENT | TCPF_SYN_RECV))) { // 发送窗口未0 且已经建立起连接
+	    !((1 << sk->sk_state) & (TCPF_SYN_SENT | TCPF_SYN_RECV))) { // 场景1: 发送窗口为0 且已经建立起连接
 		/* Receiver dastardly shrinks window. Our retransmits
 		 * become zero probes, but we should not timeout this
 		 * connection. If the socket is an orphan, time it out,
@@ -343,7 +343,7 @@ static void tcp_retransmit_timer(struct sock *sk)
 		tcp_enter_loss(sk, 0); // sack相关
 	}
 
-    // 重传sk_write_queue的第一个包 一般走这个 只重传一个包
+    // 重传sk_write_queue的第一个包 一般走这个 只重传一个包  // 场景2: 常见
 	if (tcp_retransmit_skb(sk, skb_peek(&sk->sk_write_queue)) > 0) {
 		/* Retransmission failed because of local congestion,
 		 * do not backoff.
@@ -400,7 +400,7 @@ static void tcp_write_timer(unsigned long data) // 重传定时器的回调函�
 	if (sk->sk_state == TCP_CLOSE || !icsk->icsk_pending)
 		goto out;
 
-	if (time_after(icsk->icsk_timeout, jiffies)) { //如果超时时间已经过了，则重启定时器
+	if (time_after(icsk->icsk_timeout, jiffies)) { //如果没有超时 则重新设定定时器
 		sk_reset_timer(sk, &icsk->icsk_retransmit_timer, icsk->icsk_timeout);
 		goto out;
 	}
@@ -410,7 +410,7 @@ static void tcp_write_timer(unsigned long data) // 重传定时器的回调函�
 
 	switch (event) {
 	case ICSK_TIME_RETRANS:
-		tcp_retransmit_timer(sk);
+		tcp_retransmit_timer(sk); // 超时重传
 		break;
 	case ICSK_TIME_PROBE0:
 		tcp_probe_timer(sk);

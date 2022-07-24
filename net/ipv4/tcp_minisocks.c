@@ -37,7 +37,7 @@
 int sysctl_tcp_syncookies __read_mostly = SYNC_INIT;
 int sysctl_tcp_abort_on_overflow __read_mostly;
 
-struct inet_timewait_death_row tcp_death_row = {                    // 维护所有tw并管理tw超时  本身也作为一个定时器元素
+struct inet_timewait_death_row tcp_death_row = {                    // 维护所有tw并管理tw超时  本身也作为一个定时器元素 // 而整个tw状态的socket并不是全部加入到定时器中，而是将tcp_death_row加入到定时器 中，然后每次定时器超时通过tcp_death_row来查看定时器的超时情况，从而处理tw状态的sock
 	.sysctl_max_tw_buckets = NR_FILE * 2,                           // tw超过这个值18w后就会打印警告
 	.period		= TCP_TIMEWAIT_LEN / INET_TWDR_TWKILL_SLOTS,
 	.death_lock	= __SPIN_LOCK_UNLOCKED(tcp_death_row.death_lock),
@@ -489,7 +489,7 @@ struct sock *tcp_create_openreq_child(struct sock *sk, struct request_sock *req,
 
 struct sock *tcp_check_req(struct sock *sk,struct sk_buff *skb,
 			   struct request_sock *req,
-			   struct request_sock **prev)                                          // 主要场景是 收到了三次握手的最后一个ack
+			   struct request_sock **prev)                                          // 主要场景是 收到了三次握手的最后一个ack 并 唤醒accept得调用进程
 {
 	struct tcphdr *th = skb->h.th;
 	__be32 flg = tcp_flag_word(th) & (TCP_FLAG_RST|TCP_FLAG_SYN|TCP_FLAG_ACK);
@@ -639,10 +639,10 @@ struct sock *tcp_check_req(struct sock *sk,struct sk_buff *skb,
 
 		/* If TCP_DEFER_ACCEPT is set, drop bare ACK. */
 		if (inet_csk(sk)->icsk_accept_queue.rskq_defer_accept &&
-		    TCP_SKB_CB(skb)->end_seq == tcp_rsk(req)->rcv_isn + 1) {                // defer
+		    TCP_SKB_CB(skb)->end_seq == tcp_rsk(req)->rcv_isn + 1) {                // defer最后一个a'c'k第一次到来
 			inet_rsk(req)->acked = 1;
 			return NULL;
-		}
+		}                                                                           // defer数据到来
 
 		/* OK, ACK is valid, create big socket and
 		 * feed this segment to it. It will repeat all

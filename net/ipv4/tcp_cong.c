@@ -285,7 +285,7 @@ void tcp_slow_start(struct tcp_sock *tp)
 			return;
 
 		/* We MAY increase by 2 if discovered delayed ack */
-		if (sysctl_tcp_abc > 1 && tp->bytes_acked >= 2*tp->mss_cache) {
+		if (sysctl_tcp_abc > 1 && tp->bytes_acked >= 2*tp->mss_cache) {     // 使用abc: 窗口最多只能超越ssthresh 2个mss
 			if (tp->snd_cwnd < tp->snd_cwnd_clamp)
 				tp->snd_cwnd++;
 		}
@@ -295,6 +295,29 @@ void tcp_slow_start(struct tcp_sock *tp)
 	if (tp->snd_cwnd < tp->snd_cwnd_clamp)
 		tp->snd_cwnd++;
 }
+
+void tcp_slow_start(struct tcp_sock *tp)
+{
+    int cnt;
+    if (sysctl_tcp_abc && tp->bytes_acked < tp->mss_cache)
+        return;
+    if (sysctl_tcp_max_ssthresh > 0 && tp->snd_cwnd > sysctl_tcp_max_ssthresh)
+        cnt = sysctl_tcp_max_ssthresh >> 1;
+    else
+        cnt = tp->snd_cwnd;
+
+    if (sysctl_tcp_abc > 1 && tp->bytes_acked >= 2*tp->mss_cache)
+        cnt <<= 1;                                                          // 使用了abc 且ack的数据量大于2MSS 那么最大增加两倍窗口
+    tp->bytes_acked = 0;
+
+    tp->snd_cwnd_cnt += cnt;
+    while (tp->snd_cwnd_cnt >= tp->snd_cwnd) {                              // 会出现ssthresh穿越
+        tp->snd_cwnd_cnt -= tp->snd_cwnd; 
+        if (tp->snd_cwnd < tp->snd_cwnd_clamp)
+            tp->snd_cwnd++;
+    }
+}
+
 EXPORT_SYMBOL_GPL(tcp_slow_start);
 
 /*
@@ -317,23 +340,23 @@ void tcp_reno_cong_avoid(struct sock *sk, u32 ack, u32 rtt, u32 in_flight,
 		tcp_slow_start(tp);
 
  	/* In dangerous area, increase slowly. */
-	else if (sysctl_tcp_abc) {
+	else if (sysctl_tcp_abc) {                                          // 开启abc 一个ack包确认的字节数会被保存再bytes_acked里
  		/* RFC3465: Appropriate Byte Count
  		 * increase once for each full cwnd acked
  		 */
  		if (tp->bytes_acked >= tp->snd_cwnd*tp->mss_cache) {            // 当前的拥塞窗口的所有数据段都被ack
  			tp->bytes_acked -= tp->snd_cwnd*tp->mss_cache;
- 			if (tp->snd_cwnd < tp->snd_cwnd_clamp)                      // 窗口++
+ 			if (tp->snd_cwnd < tp->snd_cwnd_clamp)                      // 通过字节数进行窗口++
  				tp->snd_cwnd++;
  		}
- 	} else {                                                            // 在途多而发送拥塞窗口小 且大于慢启动阈值
- 		/* In theory this is tp->snd_cwnd += 1 / tp->snd_cwnd */        // 理论上的每收一个ack 窗口增大 1/snd_cwnd
+ 	} else {                                                            // 不用abc 那么是通过ack的数量进行++的 // 在途多而发送拥塞窗口小 且大于慢启动阈值
+ 		/* In theory this is tp->snd_cwnd += 1 / tp->snd_cwnd */        // 理论上的每收一个ack 窗口增大 1/snd_cwnd !!! 拥塞避免阶段的核心 
  		if (tp->snd_cwnd_cnt >= tp->snd_cwnd) {
  			if (tp->snd_cwnd < tp->snd_cwnd_clamp)
  				tp->snd_cwnd++;                                         
  			tp->snd_cwnd_cnt = 0;
  		} else
- 			tp->snd_cwnd_cnt++;
+ 			tp->snd_cwnd_cnt++;                                         // 不用abc 那么cwnd是通过收到ack包的数量进行++的
  	}
 }
 EXPORT_SYMBOL_GPL(tcp_reno_cong_avoid);
