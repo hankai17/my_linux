@@ -25,10 +25,11 @@ static void tcp_diag_get_info(struct sock *sk, struct inet_diag_msg *r,
 	const struct tcp_sock *tp = tcp_sk(sk);
 	struct tcp_info *info = _info;
 
-	if (sk->sk_state == TCP_LISTEN)
-		r->idiag_rqueue = sk->sk_ack_backlog;
+                                                            // 无法用netstat/ss 查看半连接长度 只能看全连接长度
+	if (sk->sk_state == TCP_LISTEN)                         // netstat 前两列:      r           w
+		r->idiag_rqueue = sk->sk_ack_backlog;               // listen态     全连接队列长度    已发未被确认
 	else
-		r->idiag_rqueue = tp->rcv_nxt - tp->copied_seq;
+		r->idiag_rqueue = tp->rcv_nxt - tp->copied_seq;     // 其它态       应用层未拷贝长度  已发未被确认
 	r->idiag_wqueue = tp->write_seq - tp->snd_una;
 	if (info != NULL)
 		tcp_get_info(sk, info);

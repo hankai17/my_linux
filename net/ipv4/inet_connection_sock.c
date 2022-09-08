@@ -402,7 +402,7 @@ extern int sysctl_tcp_synack_retries;
 
 EXPORT_SYMBOL_GPL(inet_csk_reqsk_queue_hash_add);
 
-void inet_csk_reqsk_queue_prune(struct sock *parent,  // syn ack定时器回调 用于清理半连接队列
+void inet_csk_reqsk_queue_prune(struct sock *parent,                        // syn ack定时器回调 用于清理半连接队列  // 知识3 server端半连接定时器做了哪些工作?
 				const unsigned long interval,
 				const unsigned long timeout,
 				const unsigned long max_rto)
@@ -436,22 +436,22 @@ void inet_csk_reqsk_queue_prune(struct sock *parent,  // syn ack定时器回调 
 	 * embrions; and abort old ones without pity, if old
 	 * ones are about to clog our table.
 	 */
-	if (lopt->qlen>>(lopt->max_qlen_log-1)) {   // 判断qlen是否超过syn队列一半  max_qlen_log是一个最大值的指数 
-                                                // 如果超过了 则重新计算syn队列中的老连接(已经重传过syn ack的连接)最大重传次数 后面我们就会通过这个阈值判断是否应该丢弃掉
+	if (lopt->qlen>>(lopt->max_qlen_log-1)) {                               // 判断(半)qlen是否超过syn队列一半  (max_qlen_log是一个最大值的指数)
+                                                                            // 如果超过了 则重新计算syn队列中的老连接(已经重传过syn ack的连接)最大重传次数 后面我们就会通过这个阈值判断是否应该丢弃掉
 		int young = (lopt->qlen_young<<1);
 
 		while (thresh > 2) {
 			if (lopt->qlen < young)
 				break;
-			thresh--;                           // 即老连接重传次数-- 目的为了让老连接尽快死亡给新连接让位
+			thresh--;                                                       // 即老连接重传次数-- 目的为了让老连接尽快死亡给新连接让位
 			young <<= 1;
 		}
 	}
 
-	if (queue->rskq_defer_accept)                                   // 如果打开了defer功能
+	if (queue->rskq_defer_accept)                                           // 如果打开了defer功能
 		max_retries = queue->rskq_defer_accept;
 
-	budget = 2 * (lopt->nr_table_entries / (timeout / interval));   // 遍历syn队列桶的个数
+	budget = 2 * (lopt->nr_table_entries / (timeout / interval));           // 遍历syn队列桶的个数
 	i = lopt->clock_hand;
 
 /*
@@ -463,24 +463,24 @@ void inet_csk_reqsk_queue_prune(struct sock *parent,  // syn ack定时器回调 
 */
 
 	do {
-		reqp=&lopt->syn_table[i];                                       // 遍历桶中的元素
+		reqp=&lopt->syn_table[i];                                           // 遍历半连接桶中的元素
 		while ((req = *reqp) != NULL) {
-			if (time_after_eq(now, req->expires)) {                     // 该连接请求超时
-				if ((req->retrans < thresh ||                           // 重传次数小于阈值 或 那种backlog比较小导致的重传且重传小于系统阈值
+			if (time_after_eq(now, req->expires)) {                         // 该连接请求超时
+				if ((req->retrans < thresh ||                               // 重传次数小于阈值 或 那种backlog比较小导致的重传(acked域被设置表示最后一个ack已经收到 即accept队列已满)且重传小于系统阈值 // 知识1.1 accept队列满之后 只能通过定时器 重传syn/ack
 				     (inet_rsk(req)->acked && req->retrans < max_retries))
-				    && !req->rsk_ops->rtx_syn_ack(parent, req, NULL)) { // 重传syn ack   即使握手成功了且设置了defer也得重传
+				    && !req->rsk_ops->rtx_syn_ack(parent, req, NULL)) {     // 重传syn ack   即使握手成功了且设置了defer也得重传
 					unsigned long timeo;
 
-					if (req->retrans++ == 0)                            // 如果是首次重传则递减yong 使其不再年轻
+					if (req->retrans++ == 0)                                // 如果是首次重传则递减yong 使其不再年轻
 						lopt->qlen_young--;
-					timeo = min((timeout << req->retrans), max_rto);    // 下次重传间隔会更长
+					timeo = min((timeout << req->retrans), max_rto);        // 下次重传间隔会更长
 					req->expires = now + timeo;
 					reqp = &req->dl_next;
 					continue;
 				}
 
 				/* Drop this request */
-				inet_csk_reqsk_queue_unlink(parent, req, reqp);         // 该连接超过了阈值 则从syn队列中移除
+				inet_csk_reqsk_queue_unlink(parent, req, reqp);             // 该连接超过了阈值 则从syn队列中移除
 				reqsk_queue_removed(queue, req);
 				reqsk_free(req);
 				continue;
@@ -492,7 +492,7 @@ void inet_csk_reqsk_queue_prune(struct sock *parent,  // syn ack定时器回调 
 
 	} while (--budget > 0);
 
-	lopt->clock_hand = i; // 类似我的那个超时(大言不惭)
+	lopt->clock_hand = i;                                                   // 类似我的那个超时(大言不惭)
 
 	if (lopt->qlen)
 		inet_csk_reset_keepalive_timer(parent, interval);

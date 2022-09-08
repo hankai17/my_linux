@@ -1008,11 +1008,11 @@ static inline int tcp_fin_time(const struct sock *sk)
 	return fin_timeout;
 }
 
-static inline int tcp_paws_check(const struct tcp_options_received *rx_opt, int rst)
+static inline int tcp_paws_check(const struct tcp_options_received *rx_opt, int rst)    // 返回0成功 返回1检测失败 注意与tcp_paws_discard区别
 {
 	if ((s32)(rx_opt->rcv_tsval - rx_opt->ts_recent) >= 0)                              // 新时间戳大则不拒绝
 		return 0;
-	if (xtime.tv_sec >= rx_opt->ts_recent_stamp + TCP_PAWS_24DAYS)
+	if (xtime.tv_sec >= rx_opt->ts_recent_stamp + TCP_PAWS_24DAYS)                      // 距离上次收包 超过24天 则检测成功
 		return 0;
 
 	/* RST segments are not recommended to carry timestamp,
@@ -1027,7 +1027,7 @@ static inline int tcp_paws_check(const struct tcp_options_received *rx_opt, int 
 
 	   However, we can relax time bounds for RST segments to MSL.
 	 */
-	if (rst && xtime.tv_sec >= rx_opt->ts_recent_stamp + TCP_PAWS_MSL)                  // 必须是rst才有这种特例 即允许1秒钟的落后
+	if (rst && xtime.tv_sec >= rx_opt->ts_recent_stamp + TCP_PAWS_MSL)                  // 必须是rst才有这种特例 即允许1秒钟的落后 也是允许的
 		return 0;
 	return 1;
 }

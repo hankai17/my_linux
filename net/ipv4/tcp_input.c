@@ -2889,7 +2889,7 @@ static inline int tcp_paws_discard(const struct sock *sk, const struct sk_buff *
  */
 
 /*
-                        |seq--------------end_seq|                                      // end_seq > wup
+                        |收到的包的seq--------------end_seq|                            // end_seq > wup
 |-------wup/rcv_nxt|++++rcv_wind+++++++|                                                // seq < rcv_nxt + wind
 */
 static inline int tcp_sequence(struct tcp_sock *tp, u32 seq, u32 end_seq)               // 常规检测
@@ -3970,7 +3970,7 @@ out:
  *	tcp_data_queue when everything is OK.
  */
 int tcp_rcv_established(struct sock *sk, struct sk_buff *skb,
-			struct tcphdr *th, unsigned len)                                         // 主线1 tcp收包主逻辑
+			struct tcphdr *th, unsigned len)                                         // 主线1 tcp establish态 收包主逻辑
 {
 	struct tcp_sock *tp = tcp_sk(sk);
 
@@ -4149,7 +4149,7 @@ no_ack:
 		}
 	}
 
-slow_path:                                                                          // ----------过来的seq非我期待的
+slow_path:                                                                          // ----------过来的seq非我期待的: 比如来的包时间戳小
 	if (len < (th->doff<<2) || tcp_checksum_complete_user(sk, skb))
 		goto csum_error;
 
@@ -4157,7 +4157,7 @@ slow_path:                                                                      
 	 * RFC1323: H1. Apply PAWS check first.
 	 */
 	if (tcp_fast_parse_options(skb, th, tp) && tp->rx_opt.saw_tstamp &&
-	    tcp_paws_discard(sk, skb)) {                                                // 时间戳校验 丢弃大部分的老时间戳的包
+	    tcp_paws_discard(sk, skb)) {                                                // 时间戳校验 丢弃大部分的老时间戳的包 // 知识点 收包两大判断之1 paws 为何是24天? 为何不丢弃rst包?
 		if (!th->rst) {
 			NET_INC_STATS_BH(LINUX_MIB_PAWSESTABREJECTED);
 			tcp_send_dupack(sk, skb);
@@ -4174,7 +4174,7 @@ slow_path:                                                                      
 	 *	Standard slow path.
 	 */
 
-	if (!tcp_sequence(tp, TCP_SKB_CB(skb)->seq, TCP_SKB_CB(skb)->end_seq)) {
+	if (!tcp_sequence(tp, TCP_SKB_CB(skb)->seq, TCP_SKB_CB(skb)->end_seq)) {        // 知识点 收包两大判断之2 sequence, 虽然是slow流程 也得确保在正确的序列号范围之中
 		/* RFC793, page 37: "In all states except SYN-SENT, all reset
 		 * (RST) segments are validated by checking their SEQ-fields."
 		 * And page 69: "If an incoming segment is not acceptable,
@@ -4186,7 +4186,7 @@ slow_path:                                                                      
 		goto discard;
 	}
 
-	if(th->rst) {
+	if (th->rst) {
 		tcp_reset(sk);
 		goto discard;
 	}

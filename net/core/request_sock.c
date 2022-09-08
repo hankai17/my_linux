@@ -34,6 +34,13 @@
  */
 int sysctl_max_syn_backlog = 256;
 
+/*
+
+max_qlen_log = std::min(max_syn_backlog, 
+                            std::min(somaxconn, backlog)) * 2
+
+*/
+
 int reqsk_queue_alloc(struct request_sock_queue *queue,
 		      unsigned int nr_table_entries)
 {
@@ -42,7 +49,7 @@ int reqsk_queue_alloc(struct request_sock_queue *queue,
 
 	nr_table_entries = min_t(u32, nr_table_entries, sysctl_max_syn_backlog);
 	nr_table_entries = max_t(u32, nr_table_entries, 8);
-	nr_table_entries = roundup_pow_of_two(nr_table_entries + 1);
+	nr_table_entries = roundup_pow_of_two(nr_table_entries + 1); //  roundup_pow_of_two(128 + 1) = 256
 	lopt_size += nr_table_entries * sizeof(struct request_sock *);
 	if (lopt_size > PAGE_SIZE)
 		lopt = __vmalloc(lopt_size,

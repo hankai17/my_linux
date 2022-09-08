@@ -640,7 +640,7 @@ struct sock *tcp_check_req(struct sock *sk,struct sk_buff *skb,
 		/* If TCP_DEFER_ACCEPT is set, drop bare ACK. */
 		if (inet_csk(sk)->icsk_accept_queue.rskq_defer_accept &&
 		    TCP_SKB_CB(skb)->end_seq == tcp_rsk(req)->rcv_isn + 1) {                // defer最后一个a'c'k第一次到来
-			inet_rsk(req)->acked = 1;
+			inet_rsk(req)->acked = 1;                                               // 三次握手的最后一个ack到来
 			return NULL;
 		}                                                                           // defer数据到来
 
@@ -650,7 +650,7 @@ struct sock *tcp_check_req(struct sock *sk,struct sk_buff *skb,
 		 * ESTABLISHED STATE. If it will be dropped after
 		 * socket is created, wait for troubles.
 		 */
-		child = inet_csk(sk)->icsk_af_ops->syn_recv_sock(sk, skb,                   // 创建新socket
+		child = inet_csk(sk)->icsk_af_ops->syn_recv_sock(sk, skb,                   // 1.创建新socket // 创建子套接口child  tcp_v4_syn_recv_sock // 知识3 三次握手最后一个ack到来 如果accept队列是满的 那么child为空 置位acked
 								 req, NULL);
 		if (child == NULL)
 			goto listen_overflow;
@@ -680,7 +680,7 @@ struct sock *tcp_check_req(struct sock *sk,struct sk_buff *skb,
 #endif
 
 		inet_csk_reqsk_queue_unlink(sk, req, prev);                                 // 从半连接删除
-		inet_csk_reqsk_queue_removed(sk, req);
+		inet_csk_reqsk_queue_removed(sk, req);                                      // 从半连接删除
 
 		inet_csk_reqsk_queue_add(sk, req, child);                                   // 挂到accept队列
 		return child;

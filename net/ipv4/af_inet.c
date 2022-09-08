@@ -210,7 +210,7 @@ int inet_listen(struct socket *sock, int backlog)
 		if (err)
 			goto out;
 	}
-	sk->sk_max_ack_backlog = backlog;
+	sk->sk_max_ack_backlog = backlog;                               // 全队列长度
 	err = 0;
 
 out:
