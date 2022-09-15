@@ -271,7 +271,7 @@ alloc_null_binding_confirmed(struct nf_conn *ct,
 	return nf_nat_setup_info(ct, &range, hooknum);
 }
 
-int nf_nat_rule_find(struct sk_buff **pskb,
+int nf_nat_rule_find(struct sk_buff **pskb,                             // 每个命名空间都有自己独立的iptables规则 以NAT为例 内核在遍历NAT规则时 是从NAT的命名空间ipv4.nat_table上取下来的 NF_HOOK最终会执行到nf_nat_rule_find
 		     unsigned int hooknum,
 		     const struct net_device *in,
 		     const struct net_device *out,
@@ -280,7 +280,7 @@ int nf_nat_rule_find(struct sk_buff **pskb,
 {
 	int ret;
 
-	ret = ipt_do_table(pskb, hooknum, in, out, &nat_table);
+	ret = ipt_do_table(pskb, hooknum, in, out, &nat_table);             // 重要: nat_table 是在namespace中存储着
 
 	if (ret == NF_ACCEPT) {
 		if (!nf_nat_initialized(ct, HOOK2MANIP(hooknum)))

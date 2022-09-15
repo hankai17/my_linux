@@ -163,7 +163,7 @@ static struct sock *inet_lookup_listener_slow(const struct hlist_head *head,
 
 /* Optimize the common listener case. */
 #define TCP_LHTABLE_SIZE 32
-struct sock *__inet_lookup_listener(struct inet_hashinfo *hashinfo,         // inet_hashinfo是个全局遍历维护有 ehash(一个是非tw 一个是tw) lhash bhash(所有在使用端口的)
+struct sock *__inet_lookup_listener(struct inet_hashinfo *hashinfo,         // inet_hashinfo是个全局变量里面维护有 ehash(里面又有两个队列: 非tw 一个是tw) lhash bhash(所有在使用端口的)
 				    const __be32 daddr, const unsigned short hnum,
 				    const int dif)
 {

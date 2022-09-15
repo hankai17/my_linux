@@ -260,19 +260,19 @@ static inline int ip_local_deliver_finish(struct sk_buff *skb) //发给我的完
 /*
  * 	Deliver IP Packets to the higher protocol layers.
  */ 
-int ip_local_deliver(struct sk_buff *skb) //已经确定是发给我的 先判断接收到的数据包是不是分片 若分片则将分片重组 若不是分片或分片重组得到完整ip数据包 则本地输入点通过
+int ip_local_deliver(struct sk_buff *skb)                           // 已经确定是发给我的 先判断接收到的数据包是不是分片 若分片则将分片重组 若不是分片或分片重组得到完整ip数据包 则本地输入点通过
 {
 	/*
 	 *	Reassemble IP fragments.
 	 */
 
 	if (skb->nh.iph->frag_off & htons(IP_MF|IP_OFFSET)) {
-		skb = ip_defrag(skb, IP_DEFRAG_LOCAL_DELIVER); //ip数据包分片未重组完成 完成则返回ip数据包skb头指针
-		if (!skb)
+		skb = ip_defrag(skb, IP_DEFRAG_LOCAL_DELIVER);              // ip数据包分片重组
+		if (!skb)                                                   // ip数据包分片未重组完成 完成则返回ip数据包skb头指针
 			return 0;
 	}
 
-	return NF_HOOK(PF_INET, NF_IP_LOCAL_IN, skb, skb->dev, NULL, //netfilter处理后调 ip_local_deliver_finish完成数据包的本地输入
+	return NF_HOOK(PF_INET, NF_IP_LOCAL_IN, skb, skb->dev, NULL,    // netfilter处理后调 ip_local_deliver_finish完成数据包的本地输入
 		       ip_local_deliver_finish);
 }
 
@@ -328,8 +328,8 @@ drop:
 	return -1;
 }
 
-static inline int ip_rcv_finish(struct sk_buff *skb) //在ip_rcv中当ip数据经过netfilter模块后被调用 主要功能是: 如果还没有为该数据包查找输入路由缓存 则调ip_route_input为其查找输入路由缓存
-{ //接着处理ip数据包首部中的选项 最后根据输入路由缓存输入到本地或转发
+static inline int ip_rcv_finish(struct sk_buff *skb)                    // 在ip_rcv中当ip数据经过netfilter模块后被调用 主要功能是: 如果还没有为该数据包查找输入路由缓存 则调ip_route_input为其查找输入路由缓存
+{                                                                       // 接着处理ip数据包首部中的选项 最后根据输入路由缓存输入到本地或转发 本机则调ip_local_deliver 转发则调ip_forward
 	struct iphdr *iph = skb->nh.iph;
 
 	/*
@@ -339,7 +339,7 @@ static inline int ip_rcv_finish(struct sk_buff *skb) //在ip_rcv中当ip数据�
 	if (skb->dst == NULL) {
 		int err = ip_route_input(skb, iph->daddr, iph->saddr, iph->tos,
 					 skb->dev);
-		if (unlikely(err)) { //查询路由失败则丢弃报文
+		if (unlikely(err)) {                                            // 查询路由失败则丢弃报文
 			if (err == -EHOSTUNREACH)
 				IP_INC_STATS_BH(IPSTATS_MIB_INADDRERRORS);
 			goto drop; 
@@ -357,10 +357,10 @@ static inline int ip_rcv_finish(struct sk_buff *skb) //在ip_rcv中当ip数据�
 	}
 #endif
 
-	if (iph->ihl > 5 && ip_rcv_options(skb)) //判断ip头是否存在选项 有则调ip_rcv_optinos 处理选项
+	if (iph->ihl > 5 && ip_rcv_options(skb))                            // 判断ip头是否存在选项 有则调ip_rcv_optinos 处理选项
 		goto drop;
 
-	return dst_input(skb); //根据输入路由缓存决定输入本地(ip_local_deliver)或转发(ip_forward)
+	return dst_input(skb);                                              // 根据输入路由缓存决定输入本地(ip_local_deliver)或转发(ip_forward)
 
 drop:
         kfree_skb(skb);
@@ -370,25 +370,26 @@ drop:
 /*
  * 	Main IP Receive routine.
  */ 
-int ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt, struct net_device *orig_dev) //当网卡收到报文时 会根据网络层协议号从ptype_base散列表中找到对应的接收函数
-{                                                                                     //ipv4数据报类型为ip_packet_type 是在网络初始化时 通过dev_add_pack注册到系统中的ptype_base散列中的 对应的接收函数为ip_rcv
-	struct iphdr *iph;                                                                //ip_rcv处理完数据报 并经pre-routing点netfilter处理后 再由ip_rcv_finish处理 里面根据数据报的路由信息 决定这个数据报是转发还是输入到本机
-	u32 len;                                                                          //本机则调ip_local_deliver 转发则调ip_forward
+int ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt, struct net_device *orig_dev) 
+                                                                                        // 当网卡收到报文时 会根据网络层协议号从ptype_base散列表中找到对应的接收函数
+{                                                                                       // ipv4数据报类型为ip_packet_type 是在网络初始化时 通过dev_add_pack注册到系统中的ptype_base散列中的 对应的接收函数为ip_rcv
+	struct iphdr *iph;                                                                  // ip_rcv处理完数据报 并经pre-routing点netfilter处理后 再由ip_rcv_finish处理 里面根据数据报的路由信息 决定这个数据报是转发还是输入到本机
+	u32 len;                                                                            // 本机则调ip_local_deliver 转发则调ip_forward
 
 	/* When the interface is in promisc. mode, drop all the crap
 	 * that it receives, do not try to analyse it.
 	 */
-	if (skb->pkt_type == PACKET_OTHERHOST) //丢弃不去往本地的数据包 此处只接收发往本机的数据包
+	if (skb->pkt_type == PACKET_OTHERHOST)                                              // 丢弃不去往本地的数据包 此处只接收发往本机的数据包
 		goto drop;
 
 	IP_INC_STATS_BH(IPSTATS_MIB_INRECEIVES);
 
-	if ((skb = skb_share_check(skb, GFP_ATOMIC)) == NULL) { //检测数据包是否为共享数据包 是则复制副本 因为处理过程中可能修改数据包中的信息
+	if ((skb = skb_share_check(skb, GFP_ATOMIC)) == NULL) {                             // 检测数据包是否为共享数据包 是则复制副本 因为处理过程中可能修改数据包中的信息
 		IP_INC_STATS_BH(IPSTATS_MIB_INDISCARDS);
 		goto out;
 	}
 
-	if (!pskb_may_pull(skb, sizeof(struct iphdr))) //通过判断数据包长度检测数据包是否有效 不能小于ip首部长度
+	if (!pskb_may_pull(skb, sizeof(struct iphdr)))                                      // 通过判断数据包长度检测数据包是否有效 不能小于ip首部长度
 		goto inhdr_error;
 
 	iph = skb->nh.iph;
@@ -412,29 +413,29 @@ int ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt, 
 
 	iph = skb->nh.iph;
 
-	if (unlikely(ip_fast_csum((u8 *)iph, iph->ihl))) //check sum
+	if (unlikely(ip_fast_csum((u8 *)iph, iph->ihl)))                                    // check sum
 		goto inhdr_error;
 
 	len = ntohs(iph->tot_len);
-	if (skb->len < len || len < (iph->ihl*4)) //根据ip头中的数据包总长度值检测数据包是否有效
+	if (skb->len < len || len < (iph->ihl*4))                                           // 根据ip头中的数据包总长度值检测数据包是否有效
 		goto inhdr_error;
 
 	/* Our transport medium may have padded the buffer out. Now we know it
 	 * is IP we can trim to the true length of the frame.
 	 * Note this now means skb->len holds ntohs(iph->tot_len).
 	 */
-	if (pskb_trim_rcsum(skb, len)) { //根据ip头中的数据包总长度重新设置skb长度--->有点http cl的味道
+	if (pskb_trim_rcsum(skb, len)) {                                                    // 根据ip头中的数据包总长度重新设置skb长度--->有点http cl的味道
 		IP_INC_STATS_BH(IPSTATS_MIB_INDISCARDS);
 		goto drop;
 	}
 
 	/* Remove any debris in the socket control block */
-	memset(IPCB(skb), 0, sizeof(struct inet_skb_parm)); //将skb中的ip控制块清零 以便后续对ip选项的处理
+	memset(IPCB(skb), 0, sizeof(struct inet_skb_parm));                                 // 将skb中的ip控制块清零 以便后续对ip选项的处理
 
-	return NF_HOOK(PF_INET, NF_IP_PRE_ROUTING, skb, dev, NULL, //通过netfilter模块处理后 调ip_rcv_finish完成ip报输入
+	return NF_HOOK(PF_INET, NF_IP_PRE_ROUTING, skb, dev, NULL,                          // 通过netfilter模块处理后 调ip_rcv_finish完成ip报输入
 		       ip_rcv_finish);
 
-inhdr_error: //处理无效报文
+inhdr_error:                                                                            // 处理无效报文
 	IP_INC_STATS_BH(IPSTATS_MIB_INHDRERRORS);
 drop:
         kfree_skb(skb);
