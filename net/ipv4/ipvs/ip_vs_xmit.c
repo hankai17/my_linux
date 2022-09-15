@@ -221,7 +221,7 @@ ip_vs_bypass_xmit(struct sk_buff *skb, struct ip_vs_conn *cp,
  *      Not used for related ICMP
  */
 int
-ip_vs_nat_xmit(struct sk_buff *skb, struct ip_vs_conn *cp,
+ip_vs_nat_xmit(struct sk_buff *skb, struct ip_vs_conn *cp,              // 改目标ip // 跟iptables nat模式一样
 	       struct ip_vs_protocol *pp)
 {
 	struct rtable *rt;		/* Route to the other host */
@@ -266,7 +266,7 @@ ip_vs_nat_xmit(struct sk_buff *skb, struct ip_vs_conn *cp,
 	/* mangle the packet */
 	if (pp->dnat_handler && !pp->dnat_handler(&skb, pp, cp))
 		goto tx_error;
-	skb->nh.iph->daddr = cp->daddr;
+	skb->nh.iph->daddr = cp->daddr;                                     // 目的ip地址替换
 	ip_send_check(skb->nh.iph);
 
 	IP_VS_DBG_PKT(10, pp, skb, 0, "After DNAT");
@@ -432,7 +432,7 @@ ip_vs_tunnel_xmit(struct sk_buff *skb, struct ip_vs_conn *cp,
  */
 int
 ip_vs_dr_xmit(struct sk_buff *skb, struct ip_vs_conn *cp,
-	      struct ip_vs_protocol *pp)
+	      struct ip_vs_protocol *pp)                                    // 不会修改目的ip 几乎不做修改把包发出去
 {
 	struct rtable *rt;			/* Route to the other host */
 	struct iphdr  *iph = skb->nh.iph;
@@ -458,9 +458,9 @@ ip_vs_dr_xmit(struct sk_buff *skb, struct ip_vs_conn *cp,
 	 */
 	if (unlikely((skb = skb_share_check(skb, GFP_ATOMIC)) == NULL)) {
 		ip_rt_put(rt);
-		return NF_STOLEN;
+		return NF_STOLEN;                                               // 告诉nf不要再处理了
 	}
-	ip_send_check(skb->nh.iph);
+	ip_send_check(skb->nh.iph);                                         // 把包发出去
 
 	/* drop old route */
 	dst_release(skb->dst);

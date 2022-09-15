@@ -345,7 +345,7 @@ void ip_vs_conn_fill_cport(struct ip_vs_conn *cp, __be16 cport)
  *	Bind a connection entry with the corresponding packet_xmit.
  *	Called by ip_vs_conn_new.
  */
-static inline void ip_vs_bind_xmit(struct ip_vs_conn *cp)
+static inline void ip_vs_bind_xmit(struct ip_vs_conn *cp) // 0 总入口
 {
 	switch (IP_VS_FWD_METHOD(cp)) {
 	case IP_VS_CONN_F_MASQ:
