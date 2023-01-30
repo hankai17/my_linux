@@ -656,7 +656,7 @@ int inet_getname(struct socket *sock, struct sockaddr *uaddr,
 	return 0;
 }
 
-int inet_sendmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *msg,
+int inet_sendmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *msg,   // 第一次多态实现 socket.c
 		 size_t size)
 {
 	struct sock *sk = sock->sk;
@@ -665,7 +665,7 @@ int inet_sendmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *msg,
 	if (!inet_sk(sk)->num && inet_autobind(sk))
 		return -EAGAIN;
 
-	return sk->sk_prot->sendmsg(iocb, sk, msg, size);
+	return sk->sk_prot->sendmsg(iocb, sk, msg, size);                           // 第二次多态: unix族则调unix/af_unix.c:unix_stream_sendmsg
 }
 
 

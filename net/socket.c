@@ -563,7 +563,7 @@ static inline int __sock_sendmsg(struct kiocb *iocb, struct socket *sock,
 	if (err)
 		return err;
 
-	return sock->ops->sendmsg(iocb, sock, msg, size);
+	return sock->ops->sendmsg(iocb, sock, msg, size); // 发送第一次多态 调用inet_sendmsg
 }
 
 int sock_sendmsg(struct socket *sock, struct msghdr *msg, size_t size)
@@ -1514,7 +1514,7 @@ asmlinkage long sys_getpeername(int fd, struct sockaddr __user *usockaddr,
  *	the protocol.
  */
 
-asmlinkage long sys_sendto(int fd, void __user *buff, size_t len,
+asmlinkage long sys_sendto(int fd, void __user *buff, size_t len,                   // 系统调用send接口
 			   unsigned flags, struct sockaddr __user *addr,
 			   int addr_len)
 {
@@ -1994,7 +1994,7 @@ asmlinkage long sys_socketcall(int call, unsigned long __user *args)
 		err = sys_socketpair(a0, a1, a[2], (int __user *)a[3]);
 		break;
 	case SYS_SEND:
-		err = sys_send(a0, (void __user *)a1, a[2], a[3]);
+		err = sys_send(a0, (void __user *)a1, a[2], a[3]);                  // 系统调用send接口
 		break;
 	case SYS_SENDTO:
 		err = sys_sendto(a0, (void __user *)a1, a[2], a[3],

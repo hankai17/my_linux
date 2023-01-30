@@ -496,7 +496,7 @@ static const struct proto_ops unix_stream_ops = {
 	.owner =	THIS_MODULE,
 	.release =	unix_release,
 	.bind =		unix_bind,
-	.connect =	unix_stream_connect,
+	.connect =	unix_stream_connect,                // unix client端的建链过程
 	.socketpair =	unix_socketpair,
 	.accept =	unix_accept,
 	.getname =	unix_getname,
@@ -506,8 +506,8 @@ static const struct proto_ops unix_stream_ops = {
 	.shutdown =	unix_shutdown,
 	.setsockopt =	sock_no_setsockopt,
 	.getsockopt =	sock_no_getsockopt,
-	.sendmsg =	unix_stream_sendmsg,
-	.recvmsg =	unix_stream_recvmsg,
+	.sendmsg =	unix_stream_sendmsg,                // unix sock发送数据
+	.recvmsg =	unix_stream_recvmsg,                // unix sock接收数据
 	.mmap =		sock_no_mmap,
 	.sendpage =	sock_no_sendpage,
 };
@@ -979,18 +979,18 @@ static int unix_stream_connect(struct socket *sock, struct sockaddr *uaddr,
 	err = -ENOMEM;
 
 	/* create new sock for complete connection */
-	newsk = unix_create1(NULL);
+	newsk = unix_create1(NULL);                                             // 分配一个sock对象
 	if (newsk == NULL)
 		goto out;
 
 	/* Allocate skb for sending to listening sock */
-	skb = sock_wmalloc(newsk, 1, 0, GFP_KERNEL);
+	skb = sock_wmalloc(newsk, 1, 0, GFP_KERNEL);                            // 分配sock对象的skb
 	if (skb == NULL)
 		goto out;
 
 restart:
 	/*  Find listening sock. */
-	other = unix_find_other(sunaddr, addr_len, sk->sk_type, hash, &err);
+	other = unix_find_other(sunaddr, addr_len, sk->sk_type, hash, &err);    // 直接找本地listen的unix sock对象
 	if (!other)
 		goto out;
 
@@ -1008,7 +1008,7 @@ restart:
 	if (other->sk_state != TCP_LISTEN)
 		goto out_unlock;
 
-	if (skb_queue_len(&other->sk_receive_queue) >
+	if (skb_queue_len(&other->sk_receive_queue) >                           // unix的listen sock也有receive_queue
 	    other->sk_max_ack_backlog) {
 		err = -EAGAIN;
 		if (!timeo)
@@ -1067,7 +1067,7 @@ restart:
 	/* The way is open! Fastly set all the necessary fields... */
 
 	sock_hold(sk);
-	unix_peer(newsk)	= sk;
+	unix_peer(newsk)	= sk;                                               // new_sock与listen sock相互"绑定"
 	newsk->sk_state		= TCP_ESTABLISHED;
 	newsk->sk_type		= sk->sk_type;
 	newsk->sk_peercred.pid	= current->tgid;
@@ -1101,7 +1101,7 @@ restart:
 
 	/* take ten and and send info to listening sock */
 	spin_lock(&other->sk_receive_queue.lock);
-	__skb_queue_tail(&other->sk_receive_queue, skb);
+	__skb_queue_tail(&other->sk_receive_queue, skb);                        // 挂到listen sock的receive_queue上
 	/* Undo artificially decreased inflight after embrion
 	 * is installed to listening socket. */
 	atomic_inc(&newu->inflight);
@@ -1452,7 +1452,7 @@ static int unix_stream_sendmsg(struct kiocb *kiocb, struct socket *sock,
 	if (sk->sk_shutdown & SEND_SHUTDOWN)
 		goto pipe_err;
 
-	while(sent < len)
+	while(sent < len)                                                               // 循环发送
 	{
 		/*
 		 *	Optimisation for the fact that under 0.01% of X
@@ -1472,7 +1472,7 @@ static int unix_stream_sendmsg(struct kiocb *kiocb, struct socket *sock,
 		 *	Grab a buffer
 		 */
 		 
-		skb=sock_alloc_send_skb(sk,size,msg->msg_flags&MSG_DONTWAIT, &err);
+		skb=sock_alloc_send_skb(sk,size,msg->msg_flags&MSG_DONTWAIT, &err);         // 分配内存
 
 		if (skb==NULL)
 			goto out_err;
@@ -1486,7 +1486,7 @@ static int unix_stream_sendmsg(struct kiocb *kiocb, struct socket *sock,
 		 */
 		size = min_t(int, size, skb_tailroom(skb));
 
-		memcpy(UNIXCREDS(skb), &siocb->scm->creds, sizeof(struct ucred));
+		memcpy(UNIXCREDS(skb), &siocb->scm->creds, sizeof(struct ucred));           // 拷贝用户数据到内存
 		if (siocb->scm->fp)
 			unix_attach_fds(siocb->scm, skb);
 
@@ -1501,7 +1501,7 @@ static int unix_stream_sendmsg(struct kiocb *kiocb, struct socket *sock,
 		    (other->sk_shutdown & RCV_SHUTDOWN))
 			goto pipe_err_free;
 
-		skb_queue_tail(&other->sk_receive_queue, skb);
+		skb_queue_tail(&other->sk_receive_queue, skb);                              // 再次放到listen sock的receive_queue中 // 用于server端即listen sock上层消费?
 		unix_state_runlock(other);
 		other->sk_data_ready(other, size);
 		sent+=size;
