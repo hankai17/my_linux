@@ -310,7 +310,7 @@ void inet_csk_reset_keepalive_timer(struct sock *sk, unsigned long len)
 
 EXPORT_SYMBOL(inet_csk_reset_keepalive_timer);
 
-struct dst_entry* inet_csk_route_req(struct sock *sk,
+struct dst_entry* inet_csk_route_req(struct sock *sk,       // 查找req的路由表
 				     const struct request_sock *req)
 {
 	struct rtable *rt;

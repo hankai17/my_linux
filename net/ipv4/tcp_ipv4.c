@@ -131,8 +131,8 @@ static inline __u32 tcp_v4_init_sequence(struct sk_buff *skb)
 					  skb->h.th->source);
 }
 
-int tcp_twsk_unique(struct sock *sk, struct sock *sktw, void *twp)          // 调用栈是tcp_v4_connect->inet_hash_connect->__inet_check_established->twsk_unique->twsk_unique 即仅在connect时 reuse才生效
-                                                                            // 场景是 connect起(源)端口时 bhash中已存在该端口 且四元组也在ehash的tw中
+int tcp_twsk_unique(struct sock *sk, struct sock *sktw, void *twp)          // 调用栈是tcp_v4_connect->inet_hash_connect->__inet_check_established->twsk_unique->twsk_unique 即reuse仅在connect时才生效
+                                                                            // 场景是 connect起(源)端口时 bhash中已存在该端口 且四元组 也在ehash中
 {
 	const struct tcp_timewait_sock *tcptw = tcp_twsk(sktw);                 // 已命中了ehash中的tw
 	struct tcp_sock *tp = tcp_sk(sk);
@@ -152,7 +152,7 @@ int tcp_twsk_unique(struct sock *sk, struct sock *sktw, void *twp)          // �
 	    (twp == NULL || (sysctl_tcp_tw_reuse &&
 			     xtime.tv_sec - tcptw->tw_ts_recent_stamp > 1))) {          // 当前时间 跟上次访问时间差值要大 要大于1s目的是排除paws影响
 
-                                                                            // 假设这1s内四次握手没有完成 即对端没有收到我最后的ack 
+                                                                            // 假设reuse成功了 拿到这个端口 但是这1s内四次握手实际上并没有完成(eg: 我最后的ack丢了)
                                                                             // 而这次reuse时我把syn发出去了 对端为last_ack态 
                                                                             // 即一端可能是syn_sent态收到对端的fin重传 另一端last_ack态收到了syn
 		tp->write_seq = tcptw->tw_snd_nxt + 65535 + 2;
@@ -1356,7 +1356,7 @@ int tcp_v4_conn_request(struct sock *sk, struct sk_buff *skb)               // �
 		 */
 		if (tmp_opt.saw_tstamp &&
 		    tcp_death_row.sysctl_tw_recycle &&
-		    (dst = inet_csk_route_req(sk, req)) != NULL &&
+		    (dst = inet_csk_route_req(sk, req)) != NULL &&                  // 此乃查req的路由表
 		    (peer = rt_get_peer((struct rtable *)dst)) != NULL &&           // 先看tw定时器 先看定时器tcp_minisocks.c:tcp_time_wait
 		    peer->v4daddr == saddr) {                                       // 如果开启了recycle 且有时间戳且能查到对端的路由信息(危险分子)
 			if (xtime.tv_sec < peer->tcp_ts_stamp + TCP_PAWS_MSL &&         // 当前时间跟对端最近一次被更新时间小于PAWS_MSL(60s跟tw的2MSL一样) 即60s内访问过(恐怖分子)
@@ -1429,7 +1429,7 @@ struct sock *tcp_v4_syn_recv_sock(struct sock *sk, struct sk_buff *skb,     // �
 	if (sk_acceptq_is_full(sk))                                             //  sk->sk_ack_backlog > sk->sk_max_ack_backlog;
 		goto exit_overflow;
 
-	if (!dst && (dst = inet_csk_route_req(sk, req)) == NULL)
+	if (!dst && (dst = inet_csk_route_req(sk, req)) == NULL)                // 查找req的路由表
 		goto exit;
 
 	newsk = tcp_create_openreq_child(sk, req, skb);
@@ -1580,7 +1580,7 @@ int tcp_v4_do_rcv(struct sock *sk, struct sk_buff *skb)
 		if (!nsk)
 			goto discard;
 
-		if (nsk != sk) {                                                        // 三次握手的最后一个包 新连接
+		if (nsk != sk) {                                                        // b)三次握手的最后一个包 新连接
 			if (tcp_child_process(sk, nsk, skb)) {                              // ats的cpu高
 				rsk = nsk;
 				goto reset;
@@ -1590,7 +1590,7 @@ int tcp_v4_do_rcv(struct sock *sk, struct sk_buff *skb)
 	}
 
 	TCP_CHECK_TIMER(sk);
-	if (tcp_rcv_state_process(sk, skb, skb->h.th, skb->len)) {                  // 里面处理syn
+	if (tcp_rcv_state_process(sk, skb, skb->h.th, skb->len)) {                  // a)里面处理syn
 		rsk = sk;
 		goto reset;
 	}
@@ -1617,7 +1617,7 @@ csum_err:
  *	From tcp_input.c
  */
 
-int tcp_v4_rcv(struct sk_buff *skb)                                         // 数据接收开始 软中断上下文中调用 一次只处理一个包
+int tcp_v4_rcv(struct sk_buff *skb)                                         // 0开始主线 数据接收开始 软中断上下文中调用 一次只处理一个包
 {
 	struct tcphdr *th;
 	struct sock *sk;
@@ -1656,7 +1656,7 @@ int tcp_v4_rcv(struct sk_buff *skb)                                         // �
 	TCP_SKB_CB(skb)->flags	 = skb->nh.iph->tos;
 	TCP_SKB_CB(skb)->sacked	 = 0;
 
-	sk = __inet_lookup(&tcp_hashinfo, skb->nh.iph->saddr, th->source,       // 通过四元组先查ehash(包含tw态)再查lhash 拿到sk
+	sk = __inet_lookup(&tcp_hashinfo, skb->nh.iph->saddr, th->source,       // 通过四元组先查ehash(包含est|tw态)再查lhash 拿到sk
 			   skb->nh.iph->daddr, th->dest,
 			   inet_iif(skb));
 
@@ -1664,7 +1664,7 @@ int tcp_v4_rcv(struct sk_buff *skb)                                         // �
 		goto no_tcp_socket;
 
 process:
-	if (sk->sk_state == TCP_TIME_WAIT)                                      // tw态有包过来
+	if (sk->sk_state == TCP_TIME_WAIT)                                      // 当前为tw态 突然有包过来
 		goto do_time_wait;
 
 	if (!xfrm4_policy_check(sk, XFRM_POLICY_IN, skb))

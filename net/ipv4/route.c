@@ -2599,7 +2599,7 @@ int __ip_route_output_key(struct rtable **rp, const struct flowi *flp)
 
 EXPORT_SYMBOL_GPL(__ip_route_output_key);
 
-int ip_route_output_flow(struct rtable **rp, struct flowi *flp, struct sock *sk, int flags)
+int ip_route_output_flow(struct rtable **rp, struct flowi *flp, struct sock *sk, int flags)     // 查找路由表 rp/*in-out*/
 {
 	int err;
 

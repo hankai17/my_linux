@@ -24,6 +24,15 @@
 #include <net/netfilter/ipv4/nf_defrag_ipv4.h>
 #include <net/netfilter/nf_tproxy_core.h>
 
+// iptables TPROXY关键字 在内核中做了什么?
+//TPROXY关键字作用(需要上层IP_TRANSPARENT配合): 拦截特定的ip/port包 并 打标记
+//		打标机的作用是进入正确的表路由
+
+// 说白了就是 原本在tcp层做的事情(tcp_v4_rcv:__inet_lookup) 提前到了ip层的preroute阶段
+// https://www.cnblogs.com/lizhaolong/p/16437143.html
+// https://zhuanlan.zhihu.com/p/366767578
+// https://blog.csdn.net/dog250/article/details/7518054/
+
 struct sock *
 nf_tproxy_get_sock_v4(struct net *net, const u8 protocol,
 		      const __be32 saddr, const __be32 daddr,

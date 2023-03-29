@@ -192,7 +192,7 @@ sherry_cache:
 EXPORT_SYMBOL_GPL(__inet_lookup_listener);
 
 /* called with local bh disabled */
-static int __inet_check_established(struct inet_timewait_death_row *death_row,      // 场景是 端口已存在于bhash中
+static int __inet_check_established(struct inet_timewait_death_row *death_row,      // 场景是 端口(lport)已存在于bhash中  下面要检查该链接(四元组)是否在于ehash中(检查ehash的两个队列est跟tw)
 				    struct sock *sk, __u16 lport,
 				    struct inet_timewait_sock **twp)
 {
@@ -205,6 +205,7 @@ static int __inet_check_established(struct inet_timewait_death_row *death_row,  
 	const __portpair ports = INET_COMBINED_PORTS(inet->dport, lport);
 	unsigned int hash = inet_ehashfn(daddr, lport, saddr, inet->dport);             // 连接四元组计算一个hash
 	struct inet_ehash_bucket *head = inet_ehash_bucket(hinfo, hash);                // 拿到ehash(里有两个队列 establish跟tw)
+                                                                                    // bhash中的 端口桶里 已经存在有该要建链的源端口不可怕 可以先根据四元组算出来hash值再找ehash(里面有两个队列 est|tw)
 	struct sock *sk2;
 	const struct hlist_node *node;
 	struct inet_timewait_sock *tw;
@@ -213,11 +214,11 @@ static int __inet_check_established(struct inet_timewait_death_row *death_row,  
 	write_lock(&head->lock);
 
 	/* Check TIME-WAIT sockets first. */
-	sk_for_each(sk2, node, &(head + hinfo->ehash_size)->chain) {                    // 先遍历tw
+	sk_for_each(sk2, node, &(head + hinfo->ehash_size)->chain) {                    // 1)先遍历tw
 		tw = inet_twsk(sk2);
 
 		if (INET_TW_MATCH(sk2, hash, acookie, saddr, daddr, ports, dif)) {
-			if (twsk_unique(sk, sk2, twp))                                          // 如果存在tw 跟 建联得四元组一致 走reuse流程 tcp_twsk_unique
+			if (twsk_unique(sk, sk2, twp))                                          // 即tcp_twsk_unique 如果存在tw 跟 建联得四元组一致 走reuse流程 
 				goto unique;
 			else
 				goto not_unique;
@@ -226,7 +227,7 @@ static int __inet_check_established(struct inet_timewait_death_row *death_row,  
 	tw = NULL;
 
 	/* And established part... */
-	sk_for_each(sk2, node, &head->chain) {                                          // 再遍历establisth
+	sk_for_each(sk2, node, &head->chain) {                                          // 2)再遍历establisth
 		if (INET_MATCH(sk2, hash, acookie, saddr, daddr, ports, dif))
 			goto not_unique;
 	}
@@ -305,7 +306,7 @@ int inet_hash_connect(struct inet_timewait_death_row *death_row,                
  					BUG_TRAP(!hlist_empty(&tb->owners));
  					if (tb->fastreuse >= 0)
  						goto next_port;
- 					if (!__inet_check_established(death_row,
+ 					if (!__inet_check_established(death_row,                        // 如果从这个端口桶里 碰找到了一致的端口
 								      sk, port,
 								      &tw))
  						goto ok;

@@ -403,7 +403,7 @@ out:
  *	an IP socket.
  */
 
-static int do_ip_setsockopt(struct sock *sk, int level, //选项处理: 组播路由相关选项调ip_mroute_setsockopt 其它选项仍由do_ip_setsockopt处理
+static int do_ip_setsockopt(struct sock *sk, int level,                 // setsockopt系统调用 2.6.22很少 看3.10的
 		int optname, char __user *optval, int optlen)
 {
 	struct inet_sock *inet = inet_sk(sk);
@@ -434,7 +434,7 @@ static int do_ip_setsockopt(struct sock *sk, int level, //选项处理: 组播�
 
 #ifdef CONFIG_IP_MROUTE
 	if (optname >= MRT_BASE && optname <= (MRT_BASE + 10))
-		return ip_mroute_setsockopt(sk,optname,optval,optlen); //选项处理: 组播路由相关选项调ip_mroute_setsockopt 其它选项仍由do_ip_setsockopt处理
+		return ip_mroute_setsockopt(sk,optname,optval,optlen);          // 选项处理: 组播路由相关选项调ip_mroute_setsockopt 其它选项仍由do_ip_setsockopt处理
 #endif
 
 	err = 0;
@@ -444,13 +444,13 @@ static int do_ip_setsockopt(struct sock *sk, int level, //选项处理: 组播�
 		case IP_OPTIONS:
 		{
 			struct ip_options * opt = NULL;
-			if (optlen > 40 || optlen < 0) //长度不超过40
+			if (optlen > 40 || optlen < 0)                              // 长度不超过40
 				goto e_inval;
-			err = ip_options_get_from_user(&opt, optval, optlen); //分配IP_OPTIONS对象空间 将选项数据从user空间拷到这里
+			err = ip_options_get_from_user(&opt, optval, optlen);       // 分配IP_OPTIONS对象空间 将选项数据从user空间拷到这里
 			if (err)
 				break;
 			if (inet->is_icsk) {
-				struct inet_connection_sock *icsk = inet_csk(sk); //如果是基于链接的传输控制块 则需根据原ip选项和待设置ip选项的长度调整传输控制块中标识ip首部选项长度的icsk_ext_hdr_len
+				struct inet_connection_sock *icsk = inet_csk(sk);       // 如果是基于链接的传输控制块 则需根据原ip选项和待设置ip选项的长度调整传输控制块中标识ip首部选项长度的icsk_ext_hdr_len
 #if defined(CONFIG_IPV6) || defined(CONFIG_IPV6_MODULE)
 				if (sk->sk_family == PF_INET ||
 				    (!((1 << sk->sk_state) &
@@ -466,7 +466,7 @@ static int do_ip_setsockopt(struct sock *sk, int level, //选项处理: 组播�
 				}
 #endif
 			}
-			opt = xchg(&inet->opt, opt); //最后将待设置的ip选项信息块设置到传输控制块中 并释放原先的ip选项信息块
+			opt = xchg(&inet->opt, opt);                                // 最后将待设置的ip选项信息块设置到传输控制块中 并释放原先的ip选项信息块
 			kfree(opt);
 			break;
 		}
@@ -889,14 +889,14 @@ e_inval:
 }
 
 int ip_setsockopt(struct sock *sk, int level,
-		int optname, char __user *optval, int optlen)
+		int optname, char __user *optval, int optlen)           // setsockopt
 {
 	int err;
 
-	if (level != SOL_IP) //判断选项级别必须是SOL_IP
+	if (level != SOL_IP)                                        //  判断选项级别必须是SOL_IP
 		return -ENOPROTOOPT;
 
-	err = do_ip_setsockopt(sk, level, optname, optval, optlen); //选项处理: 组播路由相关选项调ip_mroute_setsockopt 其它选项仍由do_ip_setsockopt处理
+	err = do_ip_setsockopt(sk, level, optname, optval, optlen); // 选项处理: 组播路由相关选项调ip_mroute_setsockopt 其它选项仍由do_ip_setsockopt处理
 #ifdef CONFIG_NETFILTER
 	/* we need to exclude all possible ENOPROTOOPTs except default case */
 	if (err == -ENOPROTOOPT && optname != IP_HDRINCL &&
@@ -949,7 +949,7 @@ EXPORT_SYMBOL(compat_ip_setsockopt);
  */
 
 static int do_ip_getsockopt(struct sock *sk, int level, int optname,
-		char __user *optval, int __user *optlen)
+		char __user *optval, int __user *optlen)                            // 将inet上的标记拷贝到 用户层
 {
 	struct inet_sock *inet = inet_sk(sk);
 	int val;
@@ -1101,7 +1101,7 @@ static int do_ip_getsockopt(struct sock *sk, int level, int optname,
 			release_sock(sk);
 			return err;
 		}
-		case IP_PKTOPTIONS:		//可以获取发送辅助信息组播数据包的TTL 而对于只能通过recvmsg获取相应信息的DGRAM和RAW类型套接字 获取的是普通IP数据包的TTL
+		case IP_PKTOPTIONS:		                                // 可以获取发送辅助信息组播数据包的TTL 而对于只能通过recvmsg获取相应信息的DGRAM和RAW类型套接字 获取的是普通IP数据包的TTL
 		{
 			struct msghdr msg;
 

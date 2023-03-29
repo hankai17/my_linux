@@ -94,7 +94,7 @@ static __inline__ int tcp_in_window(u32 seq, u32 end_seq, u32 s_win, u32 e_win)
  * to avoid misread sequence numbers, states etc.  --ANK
  */
 enum tcp_tw_status
-tcp_timewait_state_process(struct inet_timewait_sock *tw, struct sk_buff *skb,  // 处于tw状态后收到数据包 取消相应的定时器
+tcp_timewait_state_process(struct inet_timewait_sock *tw, struct sk_buff *skb,  // 场景: 当前处于tw态收到了一个数据包 下面会取消相应的定时器
 			   const struct tcphdr *th)
 {
 	struct tcp_timewait_sock *tcptw = tcp_twsk((struct sock *)tw);
@@ -108,8 +108,9 @@ tcp_timewait_state_process(struct inet_timewait_sock *tw, struct sk_buff *skb,  
 		if (tmp_opt.saw_tstamp) {
 			tmp_opt.ts_recent	= tcptw->tw_ts_recent;
 			tmp_opt.ts_recent_stamp	= tcptw->tw_ts_recent_stamp;
-			paws_reject = tcp_paws_check(&tmp_opt, th->rst);                    // 一般包(rst例外)时间戳小 则置位reject
+			paws_reject = tcp_paws_check(&tmp_opt, th->rst);                    // 如果有时间戳 则检查seq防环绕
 		}
+                                                                                // 来的时间戳大 或 时间戳小但超过了24天(仍旧是时间戳大 只是大的溢出了) 则才往下进行
 	}
 
 	if (tw->tw_substate == TCP_FIN_WAIT2) {                                     // fin2的定时器到期后tw态 此时收到了对端的包?
@@ -233,10 +234,10 @@ kill:
 	   but not fatal yet.
 	 */
 
-	if (th->syn && !th->rst && !th->ack && !paws_reject &&              // 合法syn: 必须是syn 且新来的时间戳大
+	if (th->syn && !th->rst && !th->ack && !paws_reject &&              // 合法syn: 1)必须是syn 
 	    (after(TCP_SKB_CB(skb)->seq, tcptw->tw_rcv_nxt) ||
-	     (tmp_opt.saw_tstamp &&                                                             |                  \
-	      (s32)(tcptw->tw_ts_recent - tmp_opt.rcv_tsval) < 0))) {       // 合法syn:  seq要大于期待的rcv_nxt 或 时间戳大(为什么又检查一遍?)
+	     (tmp_opt.saw_tstamp &&                                                                               
+	      (s32)(tcptw->tw_ts_recent - tmp_opt.rcv_tsval) < 0))) {       // 合法syn:  2)seq要大于期待的rcv_nxt 或 新来的时间戳大
 		u32 isn = tcptw->tw_snd_nxt + 65535 + 2;
 		if (isn == 0)
 			isn++;
@@ -277,7 +278,7 @@ void tcp_time_wait(struct sock *sk, int state, int timeo)
 	const struct tcp_sock *tp = tcp_sk(sk);
 	int recycle_ok = 0;
 
-	if (tcp_death_row.sysctl_tw_recycle && tp->rx_opt.ts_recent_stamp)  // 如果打开recycle且有时间戳 进入recycle模式(定时RTO 非普通的2MSL) 定时器这里才体现快速回收的设计理念
+	if (tcp_death_row.sysctl_tw_recycle && tp->rx_opt.ts_recent_stamp)  // 如果打开recycle且有时间戳 进入recycle模式(定时3.5RTO 非普通的2MSL) 定时器这里才体现快速回收的设计理念
 		recycle_ok = icsk->icsk_af_ops->remember_stamp(sk);             // tcp_v4_remember_stamp()
 
 	if (tcp_death_row.tw_count < tcp_death_row.sysctl_max_tw_buckets)

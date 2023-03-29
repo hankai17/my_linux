@@ -1424,13 +1424,13 @@ static int tcp_write_xmit(struct sock *sk, unsigned int mss_now, int nonagle) //
 
 		TCP_SKB_CB(skb)->when = tcp_time_stamp;
 
-		if (unlikely(tcp_transmit_skb(sk, skb, 1, GFP_ATOMIC))) // 发送
+		if (unlikely(tcp_transmit_skb(sk, skb, 1, GFP_ATOMIC)))             // 发送
 			break;
 
 		/* Advance the send_head.  This one is sent out.
 		 * This call will increment packets_out.
 		 */
-		update_send_head(sk, tp, skb);
+		update_send_head(sk, tp, skb);                                      // 里面将snd_nxt更新成skb->end_seq // end_seq从何而来?
 
 		tcp_minshall_update(tp, mss_now, skb);
 		sent_pkts++;
