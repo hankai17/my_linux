@@ -281,7 +281,7 @@ int ip_output(struct sk_buff *skb) //对于单播数据包 目的路由缓存项
 			    !(IPCB(skb)->flags & IPSKB_REROUTED)); //经netfilter处理后 调ip_finish_output继续ip数据包的输出
 }
 
-int ip_queue_xmit(struct sk_buff *skb/*待封装成ip报的tcp段*/, int ipfragok) //将tcp段打包成ip报的最常用方法
+int ip_queue_xmit(struct sk_buff *skb/*待封装成ip报的tcp段*/, int ipfragok)         // 将tcp段打包成ip报的最常用方法
 {
 	struct sock *sk = skb->sk;
 	struct inet_sock *inet = inet_sk(sk);
@@ -292,22 +292,22 @@ int ip_queue_xmit(struct sk_buff *skb/*待封装成ip报的tcp段*/, int ipfrago
 	/* Skip all of this if the packet is already routed,
 	 * f.e. by something like SCTP.
 	 */
-	rt = (struct rtable *) skb->dst; //如果待输出的数据包已准备好路由缓存 则无需再查找路由 直接跳到packet_routed处理
+	rt = (struct rtable *) skb->dst;                                                // 如果待输出的数据包已准备好路由缓存 则无需再查找路由 直接跳到packet_routed处理
 	if (rt != NULL)
 		goto packet_routed;
 
 	/* Make sure we can route this packet. */
-	rt = (struct rtable *)__sk_dst_check(sk, 0); //如果该数据包的传输控制块中缓存了输出路由缓存项 则需检测该路由缓存项 是否过期
+	rt = (struct rtable *)__sk_dst_check(sk, 0);                                    // 如果该数据包的传输控制块中缓存了输出路由缓存项 则需检测该路由缓存项 是否过期
 	if (rt == NULL) {
 		__be32 daddr;
 
 		/* Use correct destination address if we have options. */
 		daddr = inet->daddr;
-		if(opt && opt->srr)
+		if(opt && opt->srr)                                                         // 如果使用源地址路由 下一跳为inet->opt->faddr 即选项中的第一个地址
 			daddr = opt->faddr;
 
 		{
-			struct flowi fl = { .oif = sk->sk_bound_dev_if, //过期则 重新通过输出网卡 目的地址 源地址 等信息重新查找路由缓存项 找到相应的路由缓存项则将其缓存到传输控制块中 否则丢弃
+			struct flowi fl = { .oif = sk->sk_bound_dev_if,                         // 过期则 重新通过输出网卡 目的地址 源地址 等信息重新查找路由缓存项 找到相应的路由缓存项则将其缓存到传输控制块中 否则丢弃
 					    .nl_u = { .ip4_u =
 						      { .daddr = daddr,
 							.saddr = inet->saddr,
@@ -325,12 +325,12 @@ int ip_queue_xmit(struct sk_buff *skb/*待封装成ip报的tcp段*/, int ipfrago
 			if (ip_route_output_flow(&rt, &fl, sk, 0))
 				goto no_route;
 		}
-		sk_setup_caps(sk, &rt->u.dst); //未过期 则直接用传输控制块中的路由缓存项目
+		sk_setup_caps(sk, &rt->u.dst);                                              // 未过期 则直接用传输控制块中的路由缓存项目
 	}
 	skb->dst = dst_clone(&rt->u.dst);
 
 packet_routed:
-	if (opt && opt->is_strictroute && rt->rt_dst != rt->rt_gateway) //查找到输出路由后 先进行严格的源路由选项处理 如果存在严格源路由选项 & 数据包的下一跳地址和网关不一致则丢弃
+	if (opt && opt->is_strictroute && rt->rt_dst != rt->rt_gateway)                 // 查找到输出路由后 先进行严格的源路由选项处理 如果存在严格源路由选项 & 数据包的下一跳地址和网关不一致则丢弃
 		goto no_route;
 
 	/* OK, we know where to send it, allocate and build IP header. */
@@ -361,11 +361,11 @@ packet_routed:
 
 	skb->priority = sk->sk_priority; //QoS
 
-	return NF_HOOK(PF_INET, NF_IP_LOCAL_OUT, skb, NULL, rt->u.dst.dev, //通过netfilter处理后 由dst_output处理数据包的输出
+	return NF_HOOK(PF_INET, NF_IP_LOCAL_OUT, skb, NULL, rt->u.dst.dev,              // 通过netfilter处理后 由dst_output处理数据包的输出
 		       dst_output);
 
 no_route:
-	IP_INC_STATS(IPSTATS_MIB_OUTNOROUTES); //找不到路由缓存项 则丢弃该数据包
+	IP_INC_STATS(IPSTATS_MIB_OUTNOROUTES);                                          // 找不到路由缓存项 则丢弃该数据包
 	kfree_skb(skb);
 	return -EHOSTUNREACH;
 }

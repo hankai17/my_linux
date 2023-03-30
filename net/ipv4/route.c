@@ -2362,19 +2362,22 @@ static inline int ip_mkroute_output(struct rtable** rp,
  * Major route resolver routine.
  */
 
+// https://blog.csdn.net/shandf/article/details/8859618
+// http://hk.javashuo.com/article/p-gphusotv-hr.html
+// https://blog.csdn.net/dog250/article/details/6685633
 static int ip_route_output_slow(struct rtable **rp, const struct flowi *oldflp)
 {
-	u32 tos	= RT_FL_TOS(oldflp);
+	u32 tos	= RT_FL_TOS(oldflp);                                // 获取tos和当前的RTO_ONLINK（？）标志
 	struct flowi fl = { .nl_u = { .ip4_u =
 				      { .daddr = oldflp->fl4_dst,
 					.saddr = oldflp->fl4_src,
 					.tos = tos & IPTOS_RT_MASK,
 					.scope = ((tos & RTO_ONLINK) ?
-						  RT_SCOPE_LINK :
+						  RT_SCOPE_LINK :                       // 根据这个标志，得出路由的scope
 						  RT_SCOPE_UNIVERSE),
 				      } },
 			    .mark = oldflp->mark,
-			    .iif = loopback_dev.ifindex,
+			    .iif = loopback_dev.ifindex,                    // 设备号为回环设备的设备号?
 			    .oif = oldflp->oif };
 	struct fib_result res;
 	unsigned flags = 0;
@@ -2388,15 +2391,17 @@ static int ip_route_output_slow(struct rtable **rp, const struct flowi *oldflp)
 	res.r		= NULL;
 #endif
 
-	if (oldflp->fl4_src) {
+	if (oldflp->fl4_src) {                                      // 先是对源地址 发包接口号和目的地址进行判断分类处理
 		err = -EINVAL;
-		if (MULTICAST(oldflp->fl4_src) ||
+		if (MULTICAST(oldflp->fl4_src) ||                       // 若源地址为组播地址 受限广播地址(255.255.255.255)或0地址 均不合法 即刻返回
 		    BADCLASS(oldflp->fl4_src) ||
 		    ZERONET(oldflp->fl4_src))
 			goto out;
 
+                                                                // 上面是对报文源地址的合理性检查 源地址是多播 广播或0地址时 返回错误
+
 		/* It is equivalent to inet_addr_type(saddr) == RTN_LOCAL */
-		dev_out = ip_dev_find(oldflp->fl4_src);
+		dev_out = ip_dev_find(oldflp->fl4_src);                 // 根据源ip找对应的网络设备
 		if (dev_out == NULL)
 			goto out;
 
@@ -2409,7 +2414,11 @@ static int ip_route_output_slow(struct rtable **rp, const struct flowi *oldflp)
 		 */
 
 		if (oldflp->oif == 0
-		    && (MULTICAST(oldflp->fl4_dst) || oldflp->fl4_dst == htonl(0xFFFFFFFF))) {
+		    && (MULTICAST(oldflp->fl4_dst) || oldflp->fl4_dst == htonl(0xFFFFFFFF))) {  // 发包接口为回环接口 目的地址是广播或多播时查找发包设备 ip_dev_find返回与所给定的源地址相等的第一个设备
+                                                                                        // 价于inet_addr_type(saddr) == RTN_LOCAL, 
+                                                                                        // __ip_dev_find()函数实际是搜索RT_TABLE_LOCAL
+                                                                                        // 路由表中的路由表项，如果未找到对应设备则返回，因为
+                                                                                        // Linux不允许环回接口发组播或受限广播 
 			/* Special hack: user can direct multicasts
 			   and limited broadcast via necessary interface
 			   without fiddling with IP_MULTICAST_IF or IP_PKTINFO.
@@ -2425,7 +2434,7 @@ static int ip_route_output_slow(struct rtable **rp, const struct flowi *oldflp)
 			   Luckily, this hack is good workaround.
 			 */
 
-			fl.oif = dev_out->ifindex;
+			fl.oif = dev_out->ifindex;                                                  // 给外面接口赋值后转去创建路由缓存
 			goto make_route;
 		}
 		if (dev_out)
@@ -2434,26 +2443,26 @@ static int ip_route_output_slow(struct rtable **rp, const struct flowi *oldflp)
 	}
 
 
-	if (oldflp->oif) {
-		dev_out = dev_get_by_index(oldflp->oif);
+	if (oldflp->oif) {                                                                  // 发包设备不为空
+		dev_out = dev_get_by_index(oldflp->oif);                                        // 检测出接口是否存在
 		err = -ENODEV;
 		if (dev_out == NULL)
 			goto out;
 
 		/* RACE: Check return value of inet_select_addr instead. */
-		if (__in_dev_get_rtnl(dev_out) == NULL) {
+		if (__in_dev_get_rtnl(dev_out) == NULL) {                                       // 如果外出接口示启用或外出接口对应的IPv4数据不存在，则返回网络不可达
 			dev_put(dev_out);
 			goto out;	/* Wrong error code */
 		}
 
-		if (LOCAL_MCAST(oldflp->fl4_dst) || oldflp->fl4_dst == htonl(0xFFFFFFFF)) {
+		if (LOCAL_MCAST(oldflp->fl4_dst) || oldflp->fl4_dst == htonl(0xFFFFFFFF)) {     // 若是本地组播地址或受限广播地址则直接转去创建路由缓存
 			if (!fl.fl4_src)
-				fl.fl4_src = inet_select_addr(dev_out, 0,
+				fl.fl4_src = inet_select_addr(dev_out, 0,                               // 当报文源地址为空时，找出出接口设备上IP地址scope小于RT_SCOPE_LINK的地址，并赋值，然后往cache中添加路由表项
 							      RT_SCOPE_LINK);
 			goto make_route;
 		}
-		if (!fl.fl4_src) {
-			if (MULTICAST(oldflp->fl4_dst))
+		if (!fl.fl4_src) {                                                              // 若未指定源地址，则根据目地地址类型创建选择一个源地址
+			if (MULTICAST(oldflp->fl4_dst))                                             // 目的地址是单播地址或空，源地址为空，那就选一个小于特定scope的IP地址
 				fl.fl4_src = inet_select_addr(dev_out, 0,
 							      fl.fl4_scope);
 			else if (!oldflp->fl4_dst)
@@ -2462,7 +2471,8 @@ static int ip_route_output_slow(struct rtable **rp, const struct flowi *oldflp)
 		}
 	}
 
-	if (!fl.fl4_dst) {
+	if (!fl.fl4_dst) {                                                                  // 如果目的地址不存在，则令目的地址等于源地址，若都不存在，则使用环回接口
+                                                                                        // 路由类型为本地路由，转而创建路由缓存
 		fl.fl4_dst = fl.fl4_src;
 		if (!fl.fl4_dst)
 			fl.fl4_dst = fl.fl4_src = htonl(INADDR_LOOPBACK);
@@ -2475,10 +2485,18 @@ static int ip_route_output_slow(struct rtable **rp, const struct flowi *oldflp)
 		flags |= RTCF_LOCAL;
 		goto make_route;
 	}
+                                                                                        // OK, 走到这里先总结一下不需要查询路由表即可直接创建路由缓存的情况：
+                                                                                        // 1. 指定了源地址，未指定外出接口，目的地址为组播地址或受限广播地址
+                                                                                        // 2. 指定了外出接口，并且目的地址为本地组播地址或受限广播地址
+                                                                                        // 3. 未指定目的地址。
+ 
+                                                                                        // 若以上三种情况均未满足，则需要进行路由表查询。
 
 	if (fib_lookup(&fl, &res)) {
 		res.fi = NULL;
-		if (oldflp->oif) {
+		if (oldflp->oif) {                                                              // 程序走到这里说明查询路由表失败，未找到对应的路由表项，
+                                                                                        // 但却指定了外出接口，这时候即便没有路由也是可以发送数据包的。
+                                                                                        // 当然，如果未指定外出接口，则只能返回网络不可达了
 			/* Apparently, routing tables are wrong. Assume,
 			   that the destination is on link.
 
@@ -2510,7 +2528,7 @@ static int ip_route_output_slow(struct rtable **rp, const struct flowi *oldflp)
 	}
 	free_res = 1;
 
-	if (res.type == RTN_LOCAL) {
+	if (res.type == RTN_LOCAL) {                                                        // 若为本地路由，则使用环回接口
 		if (!fl.fl4_src)
 			fl.fl4_src = fl.fl4_dst;
 		if (dev_out)
@@ -2530,6 +2548,11 @@ static int ip_route_output_slow(struct rtable **rp, const struct flowi *oldflp)
 		fib_select_multipath(&fl, &res);
 	else
 #endif
+                                                                                        // 使用默认路由需要三个条件：
+                                                                                        // 1. 若前缀为0，也即掩码长度为0，默认路由匹配所有的目的地址。
+                                                                                        // 2. 路由类型为RTN_UNICAST，我们知道本地地址，组播地址和广播地址
+                                                                                        // 3. 未指定出口设备，上面我们提到即便是没有路由的情况下提供了出口设备，数据包也是可以发送的。
+                                                                                        // 这时候路由是默认路由，因此我们需要选择默认网关
 	if (!res.prefixlen && res.type == RTN_UNICAST && !fl.oif)
 		fib_select_default(&fl, &res);
 
@@ -2544,7 +2567,7 @@ static int ip_route_output_slow(struct rtable **rp, const struct flowi *oldflp)
 
 
 make_route:
-	err = ip_mkroute_output(rp, &res, &fl, oldflp, dev_out, flags);
+	err = ip_mkroute_output(rp, &res, &fl, oldflp, dev_out, flags);                     // 创建一条路由缓存
 
 
 	if (free_res)

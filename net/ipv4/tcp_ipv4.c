@@ -169,6 +169,7 @@ int tcp_twsk_unique(struct sock *sk, struct sock *sktw, void *twp)          // �
 
 EXPORT_SYMBOL_GPL(tcp_twsk_unique);
 
+// http://blog.chinaunix.net/uid-23207633-id-289708.html
 /* This will initiate an outgoing connection. */
 int tcp_v4_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len)
 {
@@ -186,8 +187,8 @@ int tcp_v4_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len)
 	if (usin->sin_family != AF_INET)
 		return -EAFNOSUPPORT;
 
-	nexthop = daddr = usin->sin_addr.s_addr;
-	if (inet->opt && inet->opt->srr) {
+	nexthop = daddr = usin->sin_addr.s_addr;                                // 将临时变量下一跳地址和目的地址值都暂时设置为connect参 数中的地址 
+	if (inet->opt && inet->opt->srr) {                                      // 如果使用源地址路由 则将下一跳地址设置为IP选项中的faddr
 		if (!daddr)
 			return -EINVAL;
 		nexthop = inet->opt->faddr;
@@ -723,7 +724,7 @@ static void tcp_v4_timewait_ack(struct sock *sk, struct sk_buff *skb)
 	inet_twsk_put(tw);
 }
 
-static void tcp_v4_reqsk_send_ack(struct sk_buff *skb,
+static void tcp_v4_reqsk_send_ack(struct sk_buff *skb,                  // tcp响应ack 包括(syn-ack)
 				  struct request_sock *req)
 {
 	tcp_v4_send_ack(NULL, skb, tcp_rsk(req)->snt_isn + 1,
