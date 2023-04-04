@@ -276,7 +276,8 @@ int ip_local_deliver(struct sk_buff *skb)                           // 已经确
 		       ip_local_deliver_finish);
 }
 
-static inline int ip_rcv_options(struct sk_buff *skb) //在输入时 解析IP首部中的选项 保存到inet_skb_parm结构的opt成员中 在输出时 ip_options_build根据inet_skb_parm结构的opt成员将其反应到IP头中 在转发时 ip_forward_options根据选项做适当处理
+// http://blog.chinaunix.net/uid-23207633-id-292140.html
+static inline int ip_rcv_options(struct sk_buff *skb)               // 在输入时 解析IP首部中的选项 保存到inet_skb_parm结构的opt成员中 在输出时 ip_options_build根据inet_skb_parm结构的opt成员将其反应到IP头中 在转发时 ip_forward_options根据选项做适当处理
 {
 	struct ip_options *opt;
 	struct iphdr *iph;
@@ -289,19 +290,19 @@ static inline int ip_rcv_options(struct sk_buff *skb) //在输入时 解析IP首
 	   and running sniffer is extremely rare condition.
 					      --ANK (980813)
 	*/
-	if (skb_cow(skb, skb_headroom(skb))) { //确保数据包足够的头部空间
+	if (skb_cow(skb, skb_headroom(skb))) {                          // 确保数据包足够的头部空间
 		IP_INC_STATS_BH(IPSTATS_MIB_INDISCARDS);
 		goto drop;
 	}
 
 	iph = skb->nh.iph;
 
-	if (ip_options_compile(NULL, skb)) { //调ip_options_compile解析skb中的nh.raw指向的ip首部中ip选项 到 skb的cb中 ip层的私有数据cb为一个ip选项信息块
+	if (ip_options_compile(NULL, skb)) {                            // 调ip_options_compile解析skb中的nh.raw指向的ip首部中ip选项 到 skb的cb中 ip层的私有数据cb为一个ip选项信息块
 		IP_INC_STATS_BH(IPSTATS_MIB_INHDRERRORS);
 		goto drop;
 	}
 
-	opt = &(IPCB(skb)->opt); //如果存在源路由选项&系统允许接收带源路由选项的ip数据包 则接收并处理ip数据包的源路由选项 否则丢弃
+	opt = &(IPCB(skb)->opt);                                        // 如果存在源路由选项&系统允许接收带源路由选项的ip数据包 则接收并处理ip数据包的源路由选项 否则丢弃
 	if (unlikely(opt->srr)) {
 		struct in_device *in_dev = in_dev_get(dev);
 		if (in_dev) {
@@ -328,7 +329,7 @@ drop:
 	return -1;
 }
 
-static inline int ip_rcv_finish(struct sk_buff *skb)                    // 在ip_rcv中当ip数据经过netfilter模块后被调用 主要功能是: 如果还没有为该数据包查找输入路由缓存 则调ip_route_input为其查找输入路由缓存
+static inline int ip_rcv_finish(struct sk_buff *skb)                    // 在ip_rcv中当ip数据经过netfilter pre-route模块后被调用 主要功能是: 如果还没有为该数据包查找输入路由缓存 则调ip_route_input为其查找输入路由缓存
 {                                                                       // 接着处理ip数据包首部中的选项 最后根据输入路由缓存输入到本地或转发 本机则调ip_local_deliver 转发则调ip_forward
 	struct iphdr *iph = skb->nh.iph;
 

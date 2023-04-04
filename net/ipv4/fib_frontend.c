@@ -133,7 +133,7 @@ struct net_device * ip_dev_find(__be32 addr)
 #endif
 
 	if (!ip_fib_local_table ||
-	    ip_fib_local_table->tb_lookup(ip_fib_local_table, &fl, &res))
+	    ip_fib_local_table->tb_lookup(ip_fib_local_table, &fl, &res)) // 必须要在local表中找到一条local路由，否则则返回EINVAL错误
 		return NULL;
 	if (res.type != RTN_LOCAL)
 		goto out;
