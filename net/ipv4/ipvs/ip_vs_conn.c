@@ -603,14 +603,14 @@ ip_vs_conn_new(int proto, __be32 caddr, __be16 cport, __be32 vaddr, __be16 vport
 	struct ip_vs_conn *cp;
 	struct ip_vs_protocol *pp = ip_vs_proto_get(proto);
 
-	cp = kmem_cache_alloc(ip_vs_conn_cachep, GFP_ATOMIC);
+	cp = kmem_cache_alloc(ip_vs_conn_cachep, GFP_ATOMIC);           // 为connection分配内存
 	if (cp == NULL) {
 		IP_VS_ERR_RL("ip_vs_conn_new: no memory available.\n");
 		return NULL;
 	}
 
 	memset(cp, 0, sizeof(*cp));
-	INIT_LIST_HEAD(&cp->c_list);
+	INIT_LIST_HEAD(&cp->c_list);                                    // 初始化connection
 	init_timer(&cp->timer);
 	cp->timer.data     = (unsigned long)cp;
 	cp->timer.function = ip_vs_conn_expire;
@@ -646,13 +646,13 @@ ip_vs_conn_new(int proto, __be32 caddr, __be16 cport, __be32 vaddr, __be16 vport
 	cp->timeout = 3*HZ;
 
 	/* Bind its packet transmitter */
-	ip_vs_bind_xmit(cp);
+	ip_vs_bind_xmit(cp);                                            // 根据LVS类型绑定connection的发送函数
 
 	if (unlikely(pp && atomic_read(&pp->appcnt)))
 		ip_vs_bind_app(cp, pp);
 
 	/* Hash it in the ip_vs_conn_tab finally */
-	ip_vs_conn_hash(cp);
+	ip_vs_conn_hash(cp);                                            // 将此connection加入ip_vs_conn_tab[hash]表
 
 	return cp;
 }

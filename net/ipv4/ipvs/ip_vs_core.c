@@ -378,7 +378,7 @@ ip_vs_sched_persist(struct ip_vs_service *svc,
  *  Protocols supported: TCP, UDP
  */
 struct ip_vs_conn *
-ip_vs_schedule(struct ip_vs_service *svc, const struct sk_buff *skb)
+ip_vs_schedule(struct ip_vs_service *svc, const struct sk_buff *skb)        // 找到与此包匹配的调度策略 创建connection
 {
 	struct ip_vs_conn *cp = NULL;
 	struct iphdr *iph = skb->nh.iph;
@@ -407,7 +407,7 @@ ip_vs_schedule(struct ip_vs_service *svc, const struct sk_buff *skb)
 		return NULL;
 	}
 
-	dest = svc->scheduler->schedule(svc, skb);
+	dest = svc->scheduler->schedule(svc, skb);                              // 按照既定调度策略找到 real_server
 	if (dest == NULL) {
 		IP_VS_DBG(1, "Schedule: no dest found.\n");
 		return NULL;
@@ -416,7 +416,7 @@ ip_vs_schedule(struct ip_vs_service *svc, const struct sk_buff *skb)
 	/*
 	 *    Create a connection entry.
 	 */
-	cp = ip_vs_conn_new(iph->protocol,
+	cp = ip_vs_conn_new(iph->protocol,                                      // 创建新的connection
 			    iph->saddr, pptr[0],
 			    iph->daddr, pptr[1],
 			    dest->addr, dest->port?dest->port:pptr[1],
@@ -481,10 +481,10 @@ int ip_vs_leave(struct ip_vs_service *svc, struct sk_buff *skb,
 		ip_vs_in_stats(cp, skb);
 
 		/* set state */
-		cs = ip_vs_set_state(cp, IP_VS_DIR_INPUT, skb, pp);
+		cs = ip_vs_set_state(cp, IP_VS_DIR_INPUT, skb, pp);                     // 更新connection统计信息
 
 		/* transmit the first SYN packet */
-		ret = cp->packet_xmit(skb, cp, pp);
+		ret = cp->packet_xmit(skb, cp, pp);                                     // 发包
 		/* do not touch skb anymore */
 
 		atomic_inc(&cp->in_pkts);
@@ -668,7 +668,7 @@ static int ip_vs_out_icmp(struct sk_buff **pskb, int *related)
 	offset += cih->ihl * 4;
 
 	/* The embedded headers contain source and dest in reverse order */
-	cp = pp->conn_out_get(skb, pp, cih, offset, 1);
+	cp = pp->conn_out_get(skb, pp, cih, offset, 1); 
 	if (!cp)
 		return NF_ACCEPT;
 
@@ -741,7 +741,7 @@ ip_vs_out(unsigned int hooknum, struct sk_buff **pskb,
 		return NF_ACCEPT;
 
 	iph = skb->nh.iph;
-	if (unlikely(iph->protocol == IPPROTO_ICMP)) {
+	if (unlikely(iph->protocol == IPPROTO_ICMP)) {                      // 如果是icmp协议则走ip_vs_out_icmp
 		int related, verdict = ip_vs_out_icmp(pskb, &related);
 
 		if (related)
@@ -750,12 +750,12 @@ ip_vs_out(unsigned int hooknum, struct sk_buff **pskb,
 		iph = skb->nh.iph;
 	}
 
-	pp = ip_vs_proto_get(iph->protocol);
+	pp = ip_vs_proto_get(iph->protocol);                                // 获取四层结构
 	if (unlikely(!pp))
 		return NF_ACCEPT;
 
 	/* reassemble IP fragments */
-	if (unlikely(iph->frag_off & __constant_htons(IP_MF|IP_OFFSET) &&
+	if (unlikely(iph->frag_off & __constant_htons(IP_MF|IP_OFFSET) &&   // 检查处理分片
 		     !pp->dont_defrag)) {
 		skb = ip_vs_gather_frags(skb, IP_DEFRAG_VS_OUT);
 		if (!skb)
@@ -769,7 +769,7 @@ ip_vs_out(unsigned int hooknum, struct sk_buff **pskb,
 	/*
 	 * Check if the packet belongs to an existing entry
 	 */
-	cp = pp->conn_out_get(skb, pp, iph, ihl, 0);
+	cp = pp->conn_out_get(skb, pp, iph, ihl, 0);                        // 获取当前connection  eg: ip_vs_proto_tcp.c
 
 	if (unlikely(!cp)) {
 		if (sysctl_ip_vs_nat_icmp_send &&
@@ -810,8 +810,8 @@ ip_vs_out(unsigned int hooknum, struct sk_buff **pskb,
 	if (pp->snat_handler && !pp->snat_handler(pskb, pp, cp))
 		goto drop;
 	skb = *pskb;
-	skb->nh.iph->saddr = cp->vaddr;
-	ip_send_check(skb->nh.iph);
+	skb->nh.iph->saddr = cp->vaddr;                                     // 取四层eg tcp的vaddr
+	ip_send_check(skb->nh.iph);                                         // 重新计算第一个分片的ip首部校验和 
 
  	/* For policy routing, packets originating from this
  	 * machine itself may be routed differently to packets
@@ -963,7 +963,7 @@ ip_vs_in(unsigned int hooknum, struct sk_buff **pskb,
 	 *	... don't know why 1st test DOES NOT include 2nd (?)
 	 */
 	if (unlikely(skb->pkt_type != PACKET_HOST
-		     || skb->dev == &loopback_dev || skb->sk)) {
+		     || skb->dev == &loopback_dev || skb->sk)) {                            // 忽略不合法包
 		IP_VS_DBG(12, "packet type=%d proto=%d daddr=%d.%d.%d.%d ignored\n",
 			  skb->pkt_type,
 			  skb->nh.iph->protocol,
@@ -972,7 +972,7 @@ ip_vs_in(unsigned int hooknum, struct sk_buff **pskb,
 	}
 
 	iph = skb->nh.iph;
-	if (unlikely(iph->protocol == IPPROTO_ICMP)) {
+	if (unlikely(iph->protocol == IPPROTO_ICMP)) {                                  // 如果是icmp包则走ip_vs_in_icmp
 		int related, verdict = ip_vs_in_icmp(pskb, &related, hooknum);
 
 		if (related)
@@ -982,7 +982,7 @@ ip_vs_in(unsigned int hooknum, struct sk_buff **pskb,
 	}
 
 	/* Protocol supported? */
-	pp = ip_vs_proto_get(iph->protocol);
+	pp = ip_vs_proto_get(iph->protocol);                                            // 找到proto结构 这个结构保存在net->ipvs->proto_data_table[hash]表中
 	if (unlikely(!pp))
 		return NF_ACCEPT;
 
@@ -991,12 +991,12 @@ ip_vs_in(unsigned int hooknum, struct sk_buff **pskb,
 	/*
 	 * Check if the packet belongs to an existing connection entry
 	 */
-	cp = pp->conn_in_get(skb, pp, iph, ihl, 0);
+	cp = pp->conn_in_get(skb, pp, iph, ihl, 0);                                     // 调用proto结构的 conn_in_get 获取connection connection保存在全局表ip_vs_conn_table[hash]中
 
 	if (unlikely(!cp)) {
 		int v;
 
-		if (!pp->conn_schedule(skb, pp, &v, &cp))
+		if (!pp->conn_schedule(skb, pp, &v, &cp))                                   // 查找失败则调用 proto->conn_schedule() 创建一个connection
 			return v;
 	}
 
@@ -1023,10 +1023,10 @@ ip_vs_in(unsigned int hooknum, struct sk_buff **pskb,
 		return NF_DROP;
 	}
 
-	ip_vs_in_stats(cp, skb);
+	ip_vs_in_stats(cp, skb);                                                // 更新统计信息
 	restart = ip_vs_set_state(cp, IP_VS_DIR_INPUT, skb, pp);
 	if (cp->packet_xmit)
-		ret = cp->packet_xmit(skb, cp, pp);
+		ret = cp->packet_xmit(skb, cp, pp);                                 // 发包
 		/* do not touch skb anymore */
 	else {
 		IP_VS_DBG_RL("warning: packet_xmit is null");
