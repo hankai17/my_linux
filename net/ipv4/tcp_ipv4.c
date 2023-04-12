@@ -273,6 +273,14 @@ int tcp_v4_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len)
 	inet->id = tp->write_seq ^ jiffies;
 
 	err = tcp_connect(sk);
+#if 0
+    if (inet_sk(sk)->transparent && 
+        (sk->sk_mark == 220 || sk->sk_mark == 222)                          // 4.1TPROXY 如果sk设置了透明代理 且sk的mark为220或222 且sk绑定的dev非0 则重置sk绑定的dev为0
+            && sk->sk_bound_dev_if != 0) {
+        /* we clear sk_bound_dev_if option after build syn packet */
+        sk->sk_bound_dev_if = 0;
+    }
+#endif
 	rt = NULL;
 	if (err)
 		goto failure;
@@ -732,6 +740,30 @@ static void tcp_v4_reqsk_send_ack(struct sk_buff *skb,                  // tcp�
 			req->ts_recent);
 }
 
+#if 0
+struct request_sock {                                               // TPROXY req结构体
+    struct request_sock     *dl_next;
+    u16             mss;
+    u8              num_retrans; /* number of retransmits */
+    u8              cookie_ts:1; /* syncookie: encode tcpopts in timestamp */
+    u8              num_timeout:7; /* number of timeouts */
+    /* The following two fields can be easily recomputed I think -AK */
+    u32             window_clamp; /* window clamp at creation time */
+    u32             rcv_wnd;      /* rcv_wnd offered first time */
+    u32             ts_recent;
+    unsigned long           expires;
+    const struct request_sock_ops   *rsk_ops;
+    struct sock         *sk;
+    u32             secid;
+    u32             peer_secid;
+    /* add for tproxy */
+    u32                             sk_mark;
+    int                 iif;
+    u32                 priority;
+    /* end of add */
+};
+#endif
+
 /*
  *	Send a SYN-ACK after having received an ACK.
  *	This still operates on a request_sock only, not on a big
@@ -748,7 +780,22 @@ static int tcp_v4_send_synack(struct sock *sk, struct request_sock *req,
 	if (!dst && (dst = inet_csk_route_req(sk, req)) == NULL)
 		goto out;
 
-	skb = tcp_make_synack(sk, dst, req);
+	skb = tcp_make_synack(sk, dst, req);                            // 0.1TPROXY收到syn组ack时 修改mss
+#if 0
+    if (req->sk_mark >= 110 && req->sk_mark <= 112) {               // 0.2TPROXY收到syn组ack时 判断req mark为[110,111,112] 则重置skb mark为[220,221,212]
+        skb->mark = req->sk_mark + 100;              
+    }                                                
+    if (inet_sk(sk)->transparent && 
+        (req->sk_mark == 110 || req->sk_mark == 112)) {             // 0.3TPROXY收到syn组ack时 若sk设置了透明代理且req mark为110或112 则重置skb mark为210, 212 重置skb->skb_iif为req的iif
+            skb->mark = req->sk_mark + 100;
+            skb->skb_iif = req->iif;
+            if (req->sk_mark == 112) {
+                skb->skb_iif = req->priority;
+            }
+
+            /*printk("set tproxy syn-ack req->sk_mark =%u, skb->mark = %u, skb->skb_iif = %d\n", req->sk_mark, skb->mark, skb->skb_iif);*/
+    }
+#endif
 
 	if (skb) {
 		struct tcphdr *th = skb->h.th;
@@ -759,7 +806,7 @@ static int tcp_v4_send_synack(struct sock *sk, struct request_sock *req,
 					 csum_partial((char *)th, skb->len,
 						      skb->csum));
 
-		err = ip_build_and_send_pkt(skb, sk, ireq->loc_addr,
+		err = ip_build_and_send_pkt(skb, sk, ireq->loc_addr,        // 0.4TPROXY收到syn组ack后 发送ip包 // 里面判断如果socket设置了透明代理且skb的mark非0 且socket的mark非0 则把skb的mark置为socket的mark
 					    ireq->rmt_addr,
 					    ireq->opt);
 		err = net_xmit_eval(err);
@@ -1325,7 +1372,7 @@ int tcp_v4_conn_request(struct sock *sk, struct sk_buff *skb)               // �
 	}
 	tmp_opt.tstamp_ok = tmp_opt.saw_tstamp;
 
-	tcp_openreq_init(req, &tmp_opt, skb);                                   // 新建一个inet_request_sock(ireq) 加入到半连接队列
+	tcp_openreq_init(req, &tmp_opt, skb);                                   // 新建一个inet_request_sock(ireq) 加入到半连接队列 // 0.0TPROXY将req中的mark赋值为skb中的mark
 
 	if (security_inet_conn_request(sk, skb, req))
 		goto drop_and_free;
@@ -1394,8 +1441,19 @@ int tcp_v4_conn_request(struct sock *sk, struct sk_buff *skb)               // �
 	}                                                       ----------------------------------------------------------------------------------------------
 	tcp_rsk(req)->snt_isn = isn;
 
-	if (tcp_v4_send_synack(sk, req, dst))                                   // 发送syn/ack
+	if (tcp_v4_send_synack(sk, req, dst))                                   // 发送syn/ack      // 0TPROXY 收到syn发送ack时 
 		goto drop_and_free;
+#if 0                                                                                           // 0.4TPROXY 收到syn发送ack时 如果socket设置了透明代理 且req mark为110或112 则设置buffer的mark为210或212 skb_iif为req的iif
+    if (inet_sk(sk)->transparent && 
+        (req->sk_mark == 110 || req->sk_mark == 112)) {
+        skb_synack->mark    = req->sk_mark + 100;
+        skb_synack->skb_iif = req->iif;
+        if (req->sk_mark == 112) {
+            skb_synack->skb_iif = req->priority;
+        }
+        /*printk("2 set tproxy syn-ack req->sk_mark =%u, skb->mark = %u, skb->skb_iif = %d\n", req->sk_mark, skb->mark, skb->skb_iif);*/
+    }
+#endif
 
 	if (want_cookie) {
 	   	reqsk_free(req);
@@ -1415,7 +1473,7 @@ drop:
  * The three way handshake has completed - we got a valid synack -
  * now create the new socket.
  */
-struct sock *tcp_v4_syn_recv_sock(struct sock *sk, struct sk_buff *skb,     // 判断全队列是否已满 只有全队列未满才建立child套即口
+struct sock *tcp_v4_syn_recv_sock(struct sock *sk, struct sk_buff *skb,     // 判断全队列是否已满 只有全队列未满才建立child套即口 // 服务器端收到最后一个ack 准备起socket
 				  struct request_sock *req,
 				  struct dst_entry *dst)
 {
@@ -1591,7 +1649,7 @@ int tcp_v4_do_rcv(struct sock *sk, struct sk_buff *skb)
 	}
 
 	TCP_CHECK_TIMER(sk);
-	if (tcp_rcv_state_process(sk, skb, skb->h.th, skb->len)) {                  // a)里面处理syn
+	if (tcp_rcv_state_process(sk, skb, skb->h.th, skb->len)) {                  // a)里面处理syn // 0TPROXY透明代理切入口
 		rsk = sk;
 		goto reset;
 	}
@@ -1618,7 +1676,7 @@ csum_err:
  *	From tcp_input.c
  */
 
-int tcp_v4_rcv(struct sk_buff *skb)                                         // 0开始主线 数据接收开始 软中断上下文中调用 一次只处理一个包
+int tcp_v4_rcv(struct sk_buff *skb)                                         // 0TCP层开始主线 数据接收开始 软中断上下文中调用 一次只处理一个包
 {
 	struct tcphdr *th;
 	struct sock *sk;

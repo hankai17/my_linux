@@ -4329,6 +4329,15 @@ static int tcp_rcv_synsent_state_process(struct sock *sk, struct sk_buff *skb,  
 		 * is initialized. */
 		tp->copied_seq = tp->rcv_nxt;
 		smp_mb();
+#if 0
+        if (inet_sk(sk)->transparent) {                             // 1TPROXY 给c发送过syn后 收到了数据                 
+            if (sk->sk_mark == 220 && skb->skb_iif) {         
+                sk->sk_bound_dev_if = skb->skb_iif;           
+            } else if (sk->sk_mark == 222 && skb->priority) { 
+                sk->sk_priority = skb->priority;              
+            }                                                 
+        }                                                     
+#endif
 		tcp_set_state(sk, TCP_ESTABLISHED);
 
 		security_inet_conn_established(sk, skb);
@@ -4496,7 +4505,7 @@ int tcp_rcv_state_process(struct sock *sk, struct sk_buff *skb,                 
 			goto discard;
 
 		if(th->syn) {
-			if (icsk->icsk_af_ops->conn_request(sk, skb) < 0)                   //  tcp_ipv4.c:tcp_v4_conn_request 处理syn
+			if (icsk->icsk_af_ops->conn_request(sk, skb) < 0)                   //  tcp_ipv4.c:tcp_v4_conn_request 处理syn  // 0TPROXY透明代理切入口 处理syn包
 				return 1;
 
 			/* Now we have several options: In theory there is 
@@ -4522,7 +4531,7 @@ int tcp_rcv_state_process(struct sock *sk, struct sk_buff *skb,                 
 		goto discard;
 
 	case TCP_SYN_SENT:
-		queued = tcp_rcv_synsent_state_process(sk, skb, th, len);
+		queued = tcp_rcv_synsent_state_process(sk, skb, th, len);               // 1TPROXY 给c发送过syn后
 		if (queued >= 0)
 			return queued;
 

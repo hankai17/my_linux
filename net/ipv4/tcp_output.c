@@ -2258,7 +2258,9 @@ static void tcp_connect_init(struct sock *sk)
 /*
  * Build a SYN and send it off.
  */ 
-int tcp_connect(struct sock *sk)
+int tcp_connect(struct sock *sk)            // 4TPROXY 与os建联时 如果socket设置了透明代理 
+                                            // 4TPROXY a)sk的mark为220且sk设置了bond_dev则设置buffer的skb_iif为绑定的接口
+                                            // 4TPROXY b)sk的mark为222且sk设置了优先级则设置buffer的skb_iif为优先级
 {
 	struct tcp_sock *tp = tcp_sk(sk);
 	struct sk_buff *buff;
@@ -2286,8 +2288,18 @@ int tcp_connect(struct sock *sk)
 	/* Send it off. */
 	TCP_SKB_CB(buff)->when = tcp_time_stamp;
 	tp->retrans_stamp = TCP_SKB_CB(buff)->when;
+#if 0
+    if (inet_sk(sk)->transparent) {                         
+        if (sk->sk_mark == 220 && sk->sk_bound_dev_if) {    
+            buff->skb_iif = sk->sk_bound_dev_if;            
+        } else if (sk->sk_mark == 222 && sk->sk_priority) { 
+            buff->skb_iif = sk->sk_priority;                
+        }                                                   
+        sk->sk_bound_dev_if = 0;                            
+    }                                                       
+#endif
 	skb_header_release(buff);
-	__skb_queue_tail(&sk->sk_write_queue, buff);
+	__skb_queue_tail(&sk->sk_write_queue, buff);        // 将buffer挂到sk的write_queue上
 	sk_charge_skb(sk, buff);
 	tp->packets_out += tcp_skb_pcount(buff);
 	tcp_transmit_skb(sk, buff, 1, GFP_KERNEL);

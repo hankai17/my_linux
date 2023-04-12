@@ -329,6 +329,28 @@ struct dst_entry* inet_csk_route_req(struct sock *sk,       // 查找req的路�
 					 .dport = ireq->rmt_port } } };
 
 	security_req_classify_flow(req, &fl);
+#if 0                                                       // 2TPROXY 查找req_sock的路由 如果sk设置了透明代理 req的mark为110/112 则查找路由时 用req的mark +100查找路由
+    rt = NULL;
+    if (inet_sk(sk)->transparent && 
+        (req->sk_mark == 110 || req->sk_mark == 112)) {
+        flowi4_init_output(fl4, sk->sk_bound_dev_if, req->sk_mark + 100,
+                RT_CONN_FLAGS(sk), RT_SCOPE_UNIVERSE,
+                sk->sk_protocol,
+                flags,
+                (opt && opt->opt.srr) ? opt->opt.faddr : ireq->rmt_addr,
+                ireq->loc_addr, ireq->rmt_port, inet_sk(sk)->inet_sport);
+        security_req_classify_flow(req, flowi4_to_flowi(fl4));
+        rt = ip_route_output_flow(net, fl4, sk);
+        if (IS_ERR(rt)) {
+            rt = NULL;
+            /*} else {*/
+        /*printk("got tproxy route  rt %p\n", rt);*/
+        }
+
+    /*if (opt && opt->opt.is_strictroute && rt->rt_uses_gateway)*/
+    /*printk("tproxy check rt error\n");*/
+    }
+#endif
 	if (ip_route_output_flow(&rt, &fl, sk, 0)) {
 		IP_INC_STATS_BH(IPSTATS_MIB_OUTNOROUTES);
 		return NULL;

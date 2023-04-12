@@ -373,7 +373,7 @@ drop:
  */ 
 int ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt, struct net_device *orig_dev) 
                                                                                         // 当网卡收到报文时 会根据网络层协议号从ptype_base散列表中找到对应的接收函数
-{                                                                                       // ipv4数据报类型为ip_packet_type 是在网络初始化时 通过dev_add_pack注册到系统中的ptype_base散列中的 对应的接收函数为ip_rcv
+{                                                                                       // ipv4数据报类型为ip_packet_type 是在网络初始化时 通过dev_add_pack注册到系统中的ptype_base散列中的 对应的接收函数为ip_rcv // core/dev.c
 	struct iphdr *iph;                                                                  // ip_rcv处理完数据报 并经pre-routing点netfilter处理后 再由ip_rcv_finish处理 里面根据数据报的路由信息 决定这个数据报是转发还是输入到本机
 	u32 len;                                                                            // 本机则调ip_local_deliver 转发则调ip_forward
 

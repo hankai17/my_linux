@@ -288,6 +288,18 @@ void tcp_time_wait(struct sock *sk, int state, int timeo)
 		struct tcp_timewait_sock *tcptw = tcp_twsk((struct sock *)tw);
 		const int rto = (icsk->icsk_rto << 2) - (icsk->icsk_rto >> 1);  // 3.5RTO  recycle模式下最小超时时间
 
+#if 0
+        tw->tw_transparent  = inet->transparent;                        // 5TPROXY 给tw设置transparent/socket的mark
+        tw->tw_mark = sk->sk_mark;
+        if (tw->tw_transparent) {
+            if (sk->sk_priority) {
+                tw->outif = sk->sk_priority;                            // 5TPROXY 给tw的outif设置为socket的bond_dev/priority
+            } else if (sk->sk_bound_dev_if) {
+                tw->outif = sk->sk_bound_dev_if;
+            }
+        }
+#endif
+
 		tw->tw_rcv_wscale	= tp->rx_opt.rcv_wscale;
 		tcptw->tw_rcv_nxt	= tp->rcv_nxt;
 		tcptw->tw_snd_nxt	= tp->snd_nxt;
@@ -376,7 +388,7 @@ EXPORT_SYMBOL_GPL(tcp_twsk_destructor);
  * Actually, we could lots of memory writes here. tp of listening
  * socket contains all necessary default parameters.
  */
-struct sock *tcp_create_openreq_child(struct sock *sk, struct request_sock *req, struct sk_buff *skb)
+struct sock *tcp_create_openreq_child(struct sock *sk, struct request_sock *req, struct sk_buff *skb)       // 三次握手完成 起socket
 {
 	struct sock *newsk = inet_csk_clone(sk, req, GFP_ATOMIC);
 
@@ -479,6 +491,27 @@ struct sock *tcp_create_openreq_child(struct sock *sk, struct request_sock *req,
 		TCP_ECN_openreq_child(newtp, req);
 
 		TCP_INC_STATS_BH(TCP_MIB_PASSIVEOPENS);
+#if 0
+        if (inet_sk(sk)->transparent) {                                         // 0.5TPROXY服务器端收到握手包的最后一个ack 起socket
+            /* We bound this input interface for virtualline & switch */
+            if (req->sk_mark == 110) { /* virtualline mode */
+                newsk->sk_mark = req->sk_mark + 100;
+                newsk->sk_bound_dev_if = req->iif;
+            } else if (req->sk_mark == 111) { /* routing mode, not used */
+                newsk->sk_mark = req->sk_mark + 100;
+            } else if (req->sk_mark == 112) { /* switch mode */
+                /* XXX we can't bound_to fethXXX, otherwise output packets will be dropped
+                 * skb->skb_iif was changed to vlan.XXXX when get here. */
+                newsk->sk_mark = req->sk_mark + 100;
+                newsk->sk_bound_dev_if = req->iif;
+                newsk->sk_priority = req->priority;
+                /*printk("%s===================set sock %p sk_bound_dev_if = %d sk_priority to %d\n", __func__,*/
+                /*newsk, newsk->sk_bound_dev_if, newsk->sk_priority);*/
+            }
+            if (newtp->rx_opt.user_mss > req->mss)
+                newtp->rx_opt.user_mss = req->mss;
+        }
+#endif
 	}
 	return newsk;
 }

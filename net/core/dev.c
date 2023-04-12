@@ -1573,16 +1573,16 @@ DEFINE_PER_CPU(struct netif_rx_stats, netdev_rx_stat) = { 0, };
  *
  */
 
-int netif_rx(struct sk_buff *skb) //用于非NAPI方式 将网卡报文拷到接口层缓冲队列中
+int netif_rx(struct sk_buff *skb)                               // 用于非NAPI方式 将网卡报文拷到接口层缓冲队列中
 {
 	struct softnet_data *queue;
 	unsigned long flags;
 
 	/* if netpoll wants it, pretend we never saw it */
-	if (netpoll_rx(skb)) //将数据包传递给netpoll 如果有netpoll实例接受了 则不再传递到协议栈处理
+	if (netpoll_rx(skb))                                        // 将数据包传递给netpoll 如果有netpoll实例接受了 则不再传递到协议栈处理
 		return NET_RX_DROP;
 
-	if (!skb->tstamp.off_sec) //记录接收报文的时间戳 注意得enable SO_TIMESTAMP
+	if (!skb->tstamp.off_sec)                                   // 记录接收报文的时间戳 注意得enable SO_TIMESTAMP
 		net_timestamp(skb);
 
 	/*
@@ -1590,11 +1590,11 @@ int netif_rx(struct sk_buff *skb) //用于非NAPI方式 将网卡报文拷到接
 	 * short when CPU is congested, but is still operating.
 	 */
 	local_irq_save(flags);
-	queue = &__get_cpu_var(softnet_data); //获取cpu的接口层的缓冲队列
+	queue = &__get_cpu_var(softnet_data);                       // 获取cpu的接口层的缓冲队列
 
-	__get_cpu_var(netdev_rx_stat).total++; //更新当前cpu接口层接收报文数
-	if (queue->input_pkt_queue.qlen <= netdev_max_backlog) { //如果链路层缓存队列未满 则将该报文加入队列 否则说明上层处理严重阻塞 丢弃该报文
-		if (queue->input_pkt_queue.qlen) { //输入队列不空 说明该队列数包太多 需等待下次软中断处理 因此只需将该数据包加入输入队列即可
+	__get_cpu_var(netdev_rx_stat).total++;                      // 更新当前cpu接口层接收报文数
+	if (queue->input_pkt_queue.qlen <= netdev_max_backlog) {    // 如果链路层缓存队列未满 则将该报文加入队列 否则说明上层处理严重阻塞 丢弃该报文
+		if (queue->input_pkt_queue.qlen) {                      // 输入队列不空 说明该队列数包太多 需等待下次软中断处理 因此只需将该数据包加入输入队列即可
 enqueue:
 			dev_hold(skb->dev);
 			__skb_queue_tail(&queue->input_pkt_queue, skb);
@@ -1602,11 +1602,12 @@ enqueue:
 			return NET_RX_SUCCESS;
 		}
 
-		netif_rx_schedule(&queue->backlog_dev); //输入队列为空 即该队列没有被软中断处理过 因此将数据包添加到输入队列 & 将虚网卡加到轮训队列 最后激活数据包输入软中断 在软中断中调backlog_dev虚网卡的轮训函数process_backlog 将报文传递到上层协议
+		netif_rx_schedule(&queue->backlog_dev);                 // 输入队列为空 即该队列没有被软中断处理过 因此将数据包添加到输入队列 & 将虚网卡加到轮训队列 
+                                                                // 最后激活数据包输入软中断 在软中断中调backlog_dev虚网卡的轮训函数process_backlog 将报文传递到上层协议
 		goto enqueue;
 	}
 
-	__get_cpu_var(netdev_rx_stat).dropped++; //接口层缓冲队列满 丢弃收到的报文 & 更新当前cpu接口层丢弃的报文数
+	__get_cpu_var(netdev_rx_stat).dropped++;                    // 接口层缓冲队列满 丢弃收到的报文 & 更新当前cpu接口层丢弃的报文数
 	local_irq_restore(flags);
 
 	kfree_skb(skb);
@@ -1763,7 +1764,7 @@ static int ing_filter(struct sk_buff *skb)
 }
 #endif
 
-int netif_receive_skb(struct sk_buff *skb) //将当前报文传递到上层协议或转发
+int netif_receive_skb(struct sk_buff *skb)                                  // 将当前报文传递到上层协议或转发
 {
 	struct packet_type *ptype, *pt_prev;
 	struct net_device *orig_dev;
@@ -1771,24 +1772,24 @@ int netif_receive_skb(struct sk_buff *skb) //将当前报文传递到上层协�
 	__be16 type;
 
 	/* if we've gotten here through NAPI, check netpoll */
-	if (skb->dev->poll && netpoll_rx(skb)) //如果通过NAPI方式输入报文 则需将报文传递给netpoll模块 如果有netpoll实例接收 就不用传递到协议栈处理了
+	if (skb->dev->poll && netpoll_rx(skb))                                  // 如果通过NAPI方式输入报文 则需将报文传递给netpoll模块 如果有netpoll实例接收 就不用传递到协议栈处理了
 		return NET_RX_DROP;
 
 	if (!skb->tstamp.off_sec)
 		net_timestamp(skb);
 
-	if (!skb->input_dev) //设置最初接收设备
+	if (!skb->input_dev)                                                    // 设置最初接收设备
 		skb->input_dev = skb->dev;
 
-	orig_dev = skb_bond(skb); //获取该报文的输入网卡
+	orig_dev = skb_bond(skb);                                               // 获取该报文的输入网卡
 
 	if (!orig_dev)
 		return NET_RX_DROP;
 
-	__get_cpu_var(netdev_rx_stat).total++; //统计该cpu接收到的数据包数
+	__get_cpu_var(netdev_rx_stat).total++;                                  // 统计该cpu接收到的数据包数
 
 	skb->h.raw = skb->nh.raw = skb->data;
-	skb->mac_len = skb->nh.raw - skb->mac.raw; //获取以太网帧首部长度
+	skb->mac_len = skb->nh.raw - skb->mac.raw;                              // 获取以太网帧首部长度
 
 	pt_prev = NULL;
 
@@ -1801,10 +1802,10 @@ int netif_receive_skb(struct sk_buff *skb) //将当前报文传递到上层协�
 	}
 #endif
 
-	list_for_each_entry_rcu(ptype, &ptype_all, list) { //桥转匹配
+	list_for_each_entry_rcu(ptype, &ptype_all, list) {                      // 桥转匹配 // tcpdump
 		if (!ptype->dev || ptype->dev == skb->dev) {
 			if (pt_prev) 
-				ret = deliver_skb(skb, pt_prev, orig_dev); //成功则无需输入到本地了
+				ret = deliver_skb(skb, pt_prev, orig_dev);                  // 成功则无需输入到本地了
 			pt_prev = ptype;
 		}
 	}
@@ -1832,11 +1833,11 @@ ncls:
 		goto out;
 
 	type = skb->protocol;
-	list_for_each_entry_rcu(ptype, &ptype_base[ntohs(type)&15], list) { //桥转没匹配到相关协议 则遍历hash表
+	list_for_each_entry_rcu(ptype, &ptype_base[ntohs(type)&15], list) {     // 桥转没匹配到相关协议 则遍历hash表 // ip_rcv
 		if (ptype->type == type &&
 		    (!ptype->dev || ptype->dev == skb->dev)) {
 			if (pt_prev) 
-				ret = deliver_skb(skb, pt_prev, orig_dev);
+				ret = deliver_skb(skb, pt_prev, orig_dev);                  // ip_rcv
 			pt_prev = ptype;
 		}
 	}
@@ -1856,7 +1857,7 @@ out:
 	return ret;
 }
 
-static int process_backlog(struct net_device *backlog_dev, int *budget) //非NAPI的虚拟网络设备轮训函数
+static int process_backlog(struct net_device *backlog_dev, int *budget)     // 非NAPI的虚拟网络设备轮训函数
 {
 	int work = 0;
 	int quota = min(backlog_dev->quota, *budget);
@@ -1864,34 +1865,34 @@ static int process_backlog(struct net_device *backlog_dev, int *budget) //非NAP
 	unsigned long start_time = jiffies;
 
 	backlog_dev->weight = weight_p;
-	for (;;) { //轮序输入队列input_pkt_queue中的报文 知道队列中的所有报文都处理完 | 达到处理报文的配额 | 超时
+	for (;;) {                                                              // 轮序输入队列input_pkt_queue中的报文 知道队列中的所有报文都处理完 | 达到处理报文的配额 | 超时
 		struct sk_buff *skb;
 		struct net_device *dev;
 
 		local_irq_disable();
-		skb = __skb_dequeue(&queue->input_pkt_queue); //获取input_pkt_queue输入队列中的报文
+		skb = __skb_dequeue(&queue->input_pkt_queue);                       // 获取input_pkt_queue输入队列中的报文
 		if (!skb)
 			goto job_done;
 		local_irq_enable();
 
 		dev = skb->dev;
 
-		netif_receive_skb(skb); //将当前报文传递到上层协议或转发
+		netif_receive_skb(skb);                                             // 将当前报文传递到上层协议或转发
 
-		dev_put(dev); //
+		dev_put(dev);
 
-		work++; //统计本次读取的报文数 用于之后更新网卡的读取报文配额
+		work++;                                                             // 统计本次读取的报文数 用于之后更新网卡的读取报文配额
 
-		if (work >= quota || jiffies - start_time > 1) //如果处理报文数达到配额 | 处理超时 则结束本次报文输入
+		if (work >= quota || jiffies - start_time > 1)                      // 如果处理报文数达到配额 | 处理超时 则结束本次报文输入
 			break;
 
 	}
 
-	backlog_dev->quota -= work; //更新网卡读取报文配额
-	*budget -= work; //更新网卡轮训队列上所有网卡的读取报文总配额
-	return -1; //数据包仍需输入
+	backlog_dev->quota -= work;                                             // 更新网卡读取报文配额
+	*budget -= work;                                                        // 更新网卡轮训队列上所有网卡的读取报文总配额
+	return -1;                                                              // 数据包仍需输入
 
-job_done: //所有包处理完后 首先更新网卡的读取报文配额 & 总配额 & 将网卡从轮训队列删除 & 退出轮序态
+job_done:                                                                   // 所有包处理完后 首先更新网卡的读取报文配额 & 总配额 & 将网卡从轮训队列删除 & 退出轮序态
 	backlog_dev->quota -= work;
 	*budget -= work;
 
