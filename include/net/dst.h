@@ -223,10 +223,10 @@ static inline void dst_set_expires(struct dst_entry *dst, int timeout)
 }
 
 /* Output packet to network from transport.  */
-static inline int dst_output(struct sk_buff *skb) //输出数据包目的路由缓存项的输出接口: 从本地输出的数据包查找到目的路由缓存项 & 通过NF_IP_LOCAL_OUT点的netfilter处理后
+static inline int dst_output(struct sk_buff *skb)       // 输出数据包目的路由缓存项的输出接口: 从本地输出的数据包查找到目的路由缓存项 & 通过NF_IP_LOCAL_OUT点的netfilter处理后
 {
-	return skb->dst->output(skb); //便调用dst_output输出数据包到网卡  输出到网卡并不是直接的而是通过邻居子系统进行的 转发的数据包与输入的数据包类似也通过 NF_IP_FORWARD点的netfilter处理后 调dst_output输出数据包到网卡
-}                                     //call ip_output
+	return skb->dst->output(skb);                       // 便调用dst_output输出数据包到网卡  输出到网卡并不是直接的而是通过邻居子系统进行的 转发的数据包与输入的数据包类似也通过 NF_IP_FORWARD点的netfilter处理后 调dst_output输出数据包到网卡
+}                                                       // call ip_output
 
 /* Input packet from network to transport.  */
 static inline int dst_input(struct sk_buff *skb)

@@ -148,7 +148,7 @@ kill_with_rst:
 		}
 
 		/* FIN arrived, enter true time-wait state. */
-		tw->tw_substate	  = TCP_TIME_WAIT;                                      // fin包姗姗来迟 重置为tw态
+		tw->tw_substate	  = TCP_TIME_WAIT;                                      // 2MSL之内又收到了fin包 重置为tw态
 		tcptw->tw_rcv_nxt = TCP_SKB_CB(skb)->end_seq;
 		if (tmp_opt.saw_tstamp) {
 			tcptw->tw_ts_recent_stamp = xtime.tv_sec;
