@@ -161,14 +161,14 @@ int ip_build_and_send_pkt(struct sk_buff *skb/*待封装成ip包的tcp段*/, str
 
 EXPORT_SYMBOL_GPL(ip_build_and_send_pkt);
 
-static inline int ip_finish_output2(struct sk_buff *skb) //通过邻居子系统将数据包输出到网卡
+static inline int ip_finish_output2(struct sk_buff *skb)            // 通过邻居子系统将数据包输出到网卡
 {
 	struct dst_entry *dst = skb->dst;
 	struct net_device *dev = dst->dev;
 	int hh_len = LL_RESERVED_SPACE(dev);
 
 	/* Be paranoid, rather than too clever. */
-	if (unlikely(skb_headroom(skb) < hh_len && dev->hard_header)) { //检查skb的前部空间是否还能存储链路层首部 不够则重新分配更大skb & 释放源skb
+	if (unlikely(skb_headroom(skb) < hh_len && dev->hard_header)) { // 检查skb的前部空间是否还能存储链路层首部 不够则重新分配更大skb & 释放源skb
 		struct sk_buff *skb2;
 
 		skb2 = skb_realloc_headroom(skb, LL_RESERVED_SPACE(dev));
@@ -183,17 +183,17 @@ static inline int ip_finish_output2(struct sk_buff *skb) //通过邻居子系统
 	}
 
 	if (dst->hh)
-		return neigh_hh_output(dst->hh, skb); //如果缓存了链路层首部 则调neigh_hh_output输出数据包 否则若存在对应的邻居项 则通过邻居项的输出方法输出数据包
+		return neigh_hh_output(dst->hh, skb);                       // 如果缓存了链路层首部 则调neigh_hh_output输出数据包 否则若存在对应的邻居项 则通过邻居项的输出方法输出数据包
 	else if (dst->neighbour)
 		return dst->neighbour->output(skb);
 
-	if (net_ratelimit()) //既没有链路层首部 又没有对应的邻居项 则不能输出 释放该报
+	if (net_ratelimit())                                            // 既没有链路层首部 又没有对应的邻居项 则不能输出 释放该报
 		printk(KERN_DEBUG "ip_finish_output2: No header cache and no neighbour!\n");
 	kfree_skb(skb);
 	return -EINVAL;
 }
 
-static inline int ip_finish_output(struct sk_buff *skb) //经netfilter处理后 调ip_finish_output继续ip数据包的输出
+static inline int ip_finish_output(struct sk_buff *skb)             // 经netfilter处理后 调ip_finish_output继续ip数据包的输出
 {
 #if defined(CONFIG_NETFILTER) && defined(CONFIG_XFRM)
 	/* Policy lookup after SNAT yielded a new policy */
@@ -202,10 +202,10 @@ static inline int ip_finish_output(struct sk_buff *skb) //经netfilter处理后 
 		return dst_output(skb);
 	}
 #endif
-	if (skb->len > dst_mtu(skb->dst) && !skb_is_gso(skb)) //如果数据包大于MTU 则调ip_fragment分片 否则调ip_finish_output2
+	if (skb->len > dst_mtu(skb->dst) && !skb_is_gso(skb))           // 如果数据包大于MTU 则调ip_fragment分片 否则调ip_finish_output2
 		return ip_fragment(skb, ip_finish_output2);
 	else
-		return ip_finish_output2(skb); //通过邻居子系统将数据包输出到网卡
+		return ip_finish_output2(skb);                              // 通过邻居子系统将数据包输出到网卡
 }
 
 int ip_mc_output(struct sk_buff *skb) //对于从本地输出或是需进行转发的组播报文 如果输出路由查找成功 便可以输出 输出处理函数为ip_mc_output
@@ -267,18 +267,18 @@ int ip_mc_output(struct sk_buff *skb) //对于从本地输出或是需进行转�
 			    !(IPCB(skb)->flags & IPSKB_REROUTED)); //最后通过netfilter模块处理后 调ip_finish_output将该组播报文输出
 }
 
-int ip_output(struct sk_buff *skb) //对于单播数据包 目的路由缓存项中的output 就是ip_output
+int ip_output(struct sk_buff *skb)                          // 对于单播数据包 目的路由缓存项中的output 就是ip_output
 {
 	struct net_device *dev = skb->dst->dev;
 
 	IP_INC_STATS(IPSTATS_MIB_OUTREQUESTS);
 
 	skb->dev = dev;
-	skb->protocol = htons(ETH_P_IP); //设置数据包的输出网卡和数据包网络层协议类型
+	skb->protocol = htons(ETH_P_IP);                        // 设置数据包的输出网卡和数据包网络层协议类型
 
 	return NF_HOOK_COND(PF_INET, NF_IP_POST_ROUTING, skb, NULL, dev,
 		            ip_finish_output,
-			    !(IPCB(skb)->flags & IPSKB_REROUTED)); //经netfilter处理后 调ip_finish_output继续ip数据包的输出
+			    !(IPCB(skb)->flags & IPSKB_REROUTED));      // 经netfilter处理后 调ip_finish_output继续ip数据包的输出
 }
 
 int ip_queue_xmit(struct sk_buff *skb/*待封装成ip报的tcp段*/, int ipfragok)         // 将tcp段打包成ip报的最常用方法
@@ -361,7 +361,7 @@ packet_routed:
 
 	skb->priority = sk->sk_priority; //QoS
 
-	return NF_HOOK(PF_INET, NF_IP_LOCAL_OUT, skb, NULL, rt->u.dst.dev,              // 通过netfilter处理后 由dst_output处理数据包的输出
+	return NF_HOOK(PF_INET, NF_IP_LOCAL_OUT, skb, NULL, rt->u.dst.dev,              // 通过netfilter处理后 由dst_output(即ip_output)处理数据包的输出
 		       dst_output);
 
 no_route:
@@ -1325,7 +1325,7 @@ static int ip_reply_glue_bits(void *dptr, char *to, int offset,
  *
  *	LATER: switch from ip_build_xmit to ip_append_*
  */
-void ip_send_reply(struct sock *sk/*输出tcp段的传输控制块*/, struct sk_buff *skb/*对方发送过来的tcp段*/, struct ip_reply_arg *arg, //用于构成 & 输出rst和ack段 在tcp_v4_send_reset和tcp_v4_send_ack中调用
+void ip_send_reply(struct sock *sk/*输出tcp段的传输控制块*/, struct sk_buff *skb/*对方发送过来的tcp段*/, struct ip_reply_arg *arg, //用于构成 & 输出rst和ack段 在tcp_v4_send_reset和tcp_v4_send_ack(connect 最后一个ack)中调用
 		   unsigned int len)                                                                         //传递给ip_send_reply的一些参数集合: 包括输出的数据 tcp伪首部校验和 tcp首部中校验和字段在首部中的偏移
 {
 	struct inet_sock *inet = inet_sk(sk);

@@ -395,6 +395,11 @@ int inet_release(struct socket *sock)
 /* It is off by default, see below. */
 int sysctl_ip_nonlocal_bind __read_mostly;
 
+// IP_BIND_ADDRESS_NO_PORT 
+// 一般建联时 不用调bind接口 当调bind(IP, 0)接口时需要注意 由于bind的机制(inet_csk_get_port)过于粗暴(一旦存在于bhash则不成功)
+// 然而bhash是一个很粗暴的设计 eg: tw的端口也会在bhash中存放 而tw态的端口是可以复用的 所以建联时bind 0端口 大高并发下很可能bind失败
+// 解决方案是 bind阶段不检查bhash 将校验移到connect阶段 connect阶段的检测更精细
+// https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=90c337da1524863838658078ec34241f45d8394d
 int inet_bind(struct socket *sock, struct sockaddr *uaddr, int addr_len)
 {
 	struct sockaddr_in *addr = (struct sockaddr_in *)uaddr;
@@ -547,7 +552,7 @@ int inet_stream_connect(struct socket *sock, struct sockaddr *uaddr,
 		if (sk->sk_state != TCP_CLOSE)
 			goto out;
 
-		err = sk->sk_prot->connect(sk, uaddr, addr_len);
+		err = sk->sk_prot->connect(sk, uaddr, addr_len);            // tcp_v4_connect
 		if (err < 0)
 			goto out;
 

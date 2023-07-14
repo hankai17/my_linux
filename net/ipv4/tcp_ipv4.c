@@ -131,6 +131,7 @@ static inline __u32 tcp_v4_init_sequence(struct sk_buff *skb)
 					  skb->h.th->source);
 }
 
+                                                                            // 此函数的目的是为了一个微乎其微的场景: 从tw上复用一个端口
 int tcp_twsk_unique(struct sock *sk, struct sock *sktw, void *twp)          // 调用栈是tcp_v4_connect->inet_hash_connect->__inet_check_established->twsk_unique->twsk_unique 即reuse仅在connect时才生效
                                                                             // 场景是 connect起(源)端口时 bhash中已存在该端口 且四元组 也在ehash中
 {
@@ -251,7 +252,7 @@ int tcp_v4_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len)
 	 * complete initialization after this.
 	 */
 	tcp_set_state(sk, TCP_SYN_SENT);                                        // 设置sock的状态为TCP_SYN_SENT 
-	err = inet_hash_connect(&tcp_death_row, sk);                            // 查找一个临时端口(也就是我们出去的端口) 传参为tw全局变量tcp_death_row(tcp_minisocks.c)很怪 并加入到对应的hash链表(具体操作和get_port很相似)
+	err = inet_hash_connect(&tcp_death_row, sk);                            // 动态选择一个端口 // 查找一个临时端口(也就是我们出去的端口) 传参为tw全局变量tcp_death_row(tcp_minisocks.c)很怪 并加入到对应的hash链表(具体操作和get_port很相似)
 	if (err)
 		goto failure;
 
@@ -272,7 +273,7 @@ int tcp_v4_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len)
 
 	inet->id = tp->write_seq ^ jiffies;
 
-	err = tcp_connect(sk);
+	err = tcp_connect(sk);                                                  // 构造syn报文
 #if 0
     if (inet_sk(sk)->transparent && 
         (sk->sk_mark == 220 || sk->sk_mark == 222)                          // 4.1TPROXY 如果sk设置了透明代理 且sk的mark为220或222 且sk绑定的dev非0 则重置sk绑定的dev为0

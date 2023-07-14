@@ -192,7 +192,8 @@ sherry_cache:
 EXPORT_SYMBOL_GPL(__inet_lookup_listener);
 
 /* called with local bh disabled */
-static int __inet_check_established(struct inet_timewait_death_row *death_row,      // 场景是 端口(lport)已存在于bhash中  下面要检查该链接(四元组)是否在于ehash中(检查ehash的两个队列est跟tw)
+static int __inet_check_established(struct inet_timewait_death_row *death_row,      // 场景是 端口(lport)已存在于bhash中  
+                                                                                    // 下面要检查该链接(四元组)是否在于ehash中(检查ehash的两个队列est跟tw)
 				    struct sock *sk, __u16 lport,
 				    struct inet_timewait_sock **twp)
 {
@@ -203,7 +204,7 @@ static int __inet_check_established(struct inet_timewait_death_row *death_row,  
 	int dif = sk->sk_bound_dev_if;
 	INET_ADDR_COOKIE(acookie, saddr, daddr)
 	const __portpair ports = INET_COMBINED_PORTS(inet->dport, lport);
-	unsigned int hash = inet_ehashfn(daddr, lport, saddr, inet->dport);             // 连接四元组计算一个hash
+	unsigned int hash = inet_ehashfn(daddr, lport, saddr, inet->dport);             // hash(本机ip/port, 目的ip/端口) // 连接四元组计算一个hash
 	struct inet_ehash_bucket *head = inet_ehash_bucket(hinfo, hash);                // 拿到ehash(里有两个队列 establish跟tw)
                                                                                     // bhash中的 端口桶里 已经存在有该要建链的源端口不可怕 可以先根据四元组算出来hash值再找ehash(里面有两个队列 est|tw)
 	struct sock *sk2;
@@ -301,15 +302,19 @@ int inet_hash_connect(struct inet_timewait_death_row *death_row,                
  			 * because the established check is already
  			 * unique enough.
  			 */
-			inet_bind_bucket_for_each(tb, node, &head->chain) {
+			inet_bind_bucket_for_each(tb, node, &head->chain) {                     // 这里的实现 比在 bind里inet_csk_get_port更"精细" 所谓"精细"就是说
+                                                                                    //    随机得到的新端口 可能在bind里判断不过 但这里就可以判断过就可以
+                                                                                    //    复用这个端口
  				if (tb->port == port) {
  					BUG_TRAP(!hlist_empty(&tb->owners));
- 					if (tb->fastreuse >= 0)
+ 					if (tb->fastreuse >= 0) {
  						goto next_port;
+                    }
  					if (!__inet_check_established(death_row,                        // 如果从这个端口桶里 碰找到了一致的端口
 								      sk, port,
-								      &tw))
+								      &tw)) {
  						goto ok;
+                    }
  					goto next_port;
  				}
  			}

@@ -1141,7 +1141,7 @@ int neigh_resolve_output(struct sk_buff *skb)
 	struct neighbour *neigh;
 	int rc = 0;
 
-	if (!dst || !(neigh = dst->neighbour)) //确保用于输出的邻居项状态有效 才能发送数据包
+	if (!dst || !(neigh = dst->neighbour)) // 确保用于输出的邻居项状态有效 才能发送数据包
 		goto discard;
 
 	__skb_pull(skb, skb->nh.raw - skb->data);

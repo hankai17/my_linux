@@ -1420,17 +1420,17 @@ out_kfree_skb:
  *          --BLG
  */
 
-int dev_queue_xmit(struct sk_buff *skb) //将数据包输出到设备层 将数据包排入到输出网卡的排队规则的队列中 在数据包输出软中断中 将排队规则中的数据包出队列 并输出到网卡上
+int dev_queue_xmit(struct sk_buff *skb)                                 // 将数据包输出到设备层 将数据包排入到输出网卡的排队规则的队列中 在数据包输出软中断中 将排队规则中的数据包出队列 并输出到网卡上
 {
-	struct net_device *dev = skb->dev; //
+	struct net_device *dev = skb->dev;
 	struct Qdisc *q;
 	int rc = -ENOMEM;
 
 	/* GSO will handle the following emulations directly. */
-	if (netif_needs_gso(dev, skb)) //如果是GSO包 & 网卡支持GSO 就跳
+	if (netif_needs_gso(dev, skb))                                      // 如果是GSO包 & 网卡支持GSO 就跳
 		goto gso;
 
-	if (skb_shinfo(skb)->frag_list && //对于fraglist类型的聚合分散io数据包 如果网卡不支持fraglist类型的聚合分散io 则需将其线性化
+	if (skb_shinfo(skb)->frag_list &&                                   // 对于fraglist类型的聚合分散io数据包 如果网卡不支持fraglist类型的聚合分散io 则需将其线性化
 	    !(dev->features & NETIF_F_FRAGLIST) &&
 	    __skb_linearize(skb))
 		goto out_kfree_skb;
@@ -1439,7 +1439,7 @@ int dev_queue_xmit(struct sk_buff *skb) //将数据包输出到设备层 将数�
 	 * or if at least one of fragments is in highmem and device
 	 * does not support DMA from it.
 	 */
-	if (skb_shinfo(skb)->nr_frags && //SG类型的聚合分散io数据包 如果网卡不支持SG类型的聚合分散io 则需将其线性化 如果网卡不支持在高端内存使用dma但高端内存中有分片则也需要将数据包线性化
+	if (skb_shinfo(skb)->nr_frags &&                                    // SG类型的聚合分散io数据包 如果网卡不支持SG类型的聚合分散io 则需将其线性化 如果网卡不支持在高端内存使用dma但高端内存中有分片则也需要将数据包线性化
 	    (!(dev->features & NETIF_F_SG) || illegal_highdma(dev, skb)) &&
 	    __skb_linearize(skb))
 		goto out_kfree_skb;
@@ -1447,7 +1447,7 @@ int dev_queue_xmit(struct sk_buff *skb) //将数据包输出到设备层 将数�
 	/* If packet is not checksummed and device does not support
 	 * checksumming for this protocol, complete checksumming here.
 	 */
-	if (skb->ip_summed == CHECKSUM_PARTIAL && //如果待输出的数据包由硬件来执行校验和(目前还没校验) 但网卡不支持硬件执行校验 不支持对ip报文执行校验和 则在此计算校验和
+	if (skb->ip_summed == CHECKSUM_PARTIAL &&                           // 如果待输出的数据包由硬件来执行校验和(目前还没校验) 但网卡不支持硬件执行校验 不支持对ip报文执行校验和 则在此计算校验和
 	    (!(dev->features & NETIF_F_GEN_CSUM) &&
 	     (!(dev->features & NETIF_F_IP_CSUM) ||
 	      skb->protocol != htons(ETH_P_IP))))
@@ -1455,7 +1455,7 @@ int dev_queue_xmit(struct sk_buff *skb) //将数据包输出到设备层 将数�
 	      		goto out_kfree_skb;
 
 gso:
-	spin_lock_prefetch(&dev->queue_lock); //获取网卡排队规程???
+	spin_lock_prefetch(&dev->queue_lock);                               // 获取网卡排队规程???
 
 	/* Disable soft irqs for various locks below. Also 
 	 * stops preemption for RCU. 
@@ -1474,17 +1474,17 @@ gso:
 	 * also serializes access to the device queue.
 	 */
 
-	q = rcu_dereference(dev->qdisc); //rcu_dereference在rcu读临界部分中取出一个rcu保护指针 在需要内存屏障的体系中进行内存屏障 目前只有alpha体系需要
+	q = rcu_dereference(dev->qdisc);                                    // rcu_dereference在rcu读临界部分中取出一个rcu保护指针 在需要内存屏障的体系中进行内存屏障 目前只有alpha体系需要
 #ifdef CONFIG_NET_CLS_ACT
 	skb->tc_verd = SET_TC_AT(skb->tc_verd,AT_EGRESS);
 #endif
-	if (q->enqueue) { //如果获取的排队规程定义了入队操作 则说明启用了QoS
+	if (q->enqueue) {                                                   // 如果获取的排队规程定义了入队操作 则说明启用了QoS
 		/* Grab device queue */
 		spin_lock(&dev->queue_lock);
 		q = dev->qdisc;
-		if (q->enqueue) { //将待发送的数据包按排队规则插入队列 然后进行流控 调度队列输出数据包
+		if (q->enqueue) {                                               // 将待发送的数据包按排队规则插入队列 然后进行流控 调度队列输出数据包
 			rc = q->enqueue(skb, q);
-			qdisc_run(dev); //调度数据包输出软中断 在合适时机发送数据包 真正调度之前需检测网络设备是否处于启用状态 & 处于流控调度队列过程中
+			qdisc_run(dev);                                             // 调度数据包输出软中断 在合适时机发送数据包 真正调度之前需检测网络设备是否处于启用状态 & 处于流控调度队列过程中
 			spin_unlock(&dev->queue_lock);
 
 			rc = rc == NET_XMIT_BYPASS ? NET_XMIT_SUCCESS : rc;
@@ -1505,16 +1505,16 @@ gso:
 	   Check this and shot the lock. It is not prone from deadlocks.
 	   Either shot noqueue qdisc, it is even simpler 8)
 	 */
-	if (dev->flags & IFF_UP) { //如果设备已开 但未启用QoS 则直接输出数据包
+	if (dev->flags & IFF_UP) {                                          // 如果设备已开 但未启用QoS 则直接输出数据包
 		int cpu = smp_processor_id(); /* ok because BHs are off */
 
 		if (dev->xmit_lock_owner != cpu) {
 
-			HARD_TX_LOCK(dev, cpu); //HARD_TX_LOCK/HARD_TX_UNLOCK 之间cpu不能调用dev_queue_xmit函数
+			HARD_TX_LOCK(dev, cpu);                                     // HARD_TX_LOCK/HARD_TX_UNLOCK 之间cpu不能调用dev_queue_xmit函数
 
 			if (!netif_queue_stopped(dev)) {
 				rc = 0;
-				if (!dev_hard_start_xmit(skb, dev)) { //输出数据包到网卡
+				if (!dev_hard_start_xmit(skb, dev)) {                   // 输出数据包到网卡
 					HARD_TX_UNLOCK(dev);
 					goto out;
 				}
@@ -1829,7 +1829,7 @@ int netif_receive_skb(struct sk_buff *skb)                                  // �
 ncls:
 #endif
 
-	if (handle_bridge(&skb, &pt_prev, &ret, orig_dev))
+	if (handle_bridge(&skb, &pt_prev, &ret, orig_dev))                      // 处理bridge报文
 		goto out;
 
 	type = skb->protocol;
