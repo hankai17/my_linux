@@ -397,8 +397,10 @@ int sysctl_ip_nonlocal_bind __read_mostly;
 
 // IP_BIND_ADDRESS_NO_PORT 
 // 一般建联时 不用调bind接口 当调bind(IP, 0)接口时需要注意 由于bind的机制(inet_csk_get_port)过于粗暴(一旦存在于bhash则不成功)
-// 然而bhash是一个很粗暴的设计 eg: tw的端口也会在bhash中存放 而tw态的端口是可以复用的 所以建联时bind 0端口 大高并发下很可能bind失败
+// bhash 只使用src_ip和src_port来区分冲突，而connect()用了四元组来区分冲突，所以不会频繁地发生端口耗尽问题。
+// 然而bhash还是一个很粗暴的设计 eg: tw的端口也会在bhash中存放 而tw态的端口是可以复用的 所以建联时bind 0端口 大高并发下很可能bind失败
 // 解决方案是 bind阶段不检查bhash 将校验移到connect阶段 connect阶段的检测更精细
+// https://blog.csdn.net/popvip44/article/details/82855879
 // https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=90c337da1524863838658078ec34241f45d8394d
 int inet_bind(struct socket *sock, struct sockaddr *uaddr, int addr_len)
 {
