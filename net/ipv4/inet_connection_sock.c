@@ -44,7 +44,9 @@ int inet_csk_bind_conflict(const struct sock *sk,
 	struct hlist_node *node;
 	int reuse = sk->sk_reuse;
 
-	sk_for_each_bound(sk2, node, &tb->owners) {
+	sk_for_each_bound(sk2, node, &tb->owners) {                     // 也就是说 不使用同一个接收地址的socket可以共用端口号
+                                                                    // 绑定在不同的网络设备接口上的socket可以共用端口号
+                                                                    // 或两个socket都表示自己可以被重用 并且还不在TCP_LISTEN状态则可以重用端口号
 		if (sk != sk2 &&
 		    !inet_v6_ipv6only(sk2) &&
 		    (!sk->sk_bound_dev_if ||
@@ -78,7 +80,7 @@ int inet_csk_get_port(struct inet_hashinfo *hashinfo,
 	int ret;
 
 	local_bh_disable();
-	if (!snum) {                                                                    // 端口为0 内核决定
+	if (!snum) {                                                                    // 端口为0 内核决定 // 此方案的缺点是 一定得碰撞出来一个不同的端口才算罢休
 		int low = sysctl_local_port_range[0];
 		int high = sysctl_local_port_range[1];
 		int remaining = (high - low) + 1;
@@ -120,8 +122,8 @@ int inet_csk_get_port(struct inet_hashinfo *hashinfo,
 	}
 	tb = NULL;
 	goto tb_not_found;
-tb_found:
-	if (!hlist_empty(&tb->owners)) {
+tb_found:                                                                           // 场景是 绑定端口时 该端口已在bhash中
+	if (!hlist_empty(&tb->owners)) {                                                //     第一次碰到了tb tb里的owners为空
 		if (sk->sk_reuse > 1)
 			goto success;
 		if (tb->fastreuse > 0 &&
@@ -129,7 +131,7 @@ tb_found:
 			goto success;
 		} else {
 			ret = 1;
-			if (bind_conflict(sk, tb))
+			if (bind_conflict(sk, tb))                                              //  inet_csk_bind_conflict
 				goto fail_unlock;
 		}
 	}
