@@ -222,6 +222,7 @@ ip_vs_bypass_xmit(struct sk_buff *skb, struct ip_vs_conn *cp,
  */
 int
 ip_vs_nat_xmit(struct sk_buff *skb, struct ip_vs_conn *cp,              // 改目标ip // 跟iptables nat模式一样
+																		// https://github.com/liexusong/linux-source-code-analyze/blob/master/lvs-principle-and-source-analysis-part2.md // 单向讲的很清晰
 	       struct ip_vs_protocol *pp)
 {
 	struct rtable *rt;		/* Route to the other host */
@@ -240,7 +241,7 @@ ip_vs_nat_xmit(struct sk_buff *skb, struct ip_vs_conn *cp,              // 改�
 		IP_VS_DBG(10, "filled cport=%d\n", ntohs(*p));
 	}
 
-	if (!(rt = __ip_vs_get_out_rt(cp, RT_TOS(iph->tos))))
+	if (!(rt = __ip_vs_get_out_rt(cp, RT_TOS(iph->tos))))				// 获取真实服务器 IP 对应的路由信息
 		goto tx_error_icmp;
 
 	/* MTU checking */
@@ -260,7 +261,7 @@ ip_vs_nat_xmit(struct sk_buff *skb, struct ip_vs_conn *cp,              // 改�
 		goto tx_error_put;
 
 	/* drop old route */
-	dst_release(skb->dst);
+	dst_release(skb->dst);												// 把数据包的旧路由信息替换成新的路由信息
 	skb->dst = &rt->u.dst;
 
 	/* mangle the packet */

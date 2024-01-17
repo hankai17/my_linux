@@ -527,7 +527,7 @@ int ip_vs_check_template(struct ip_vs_conn *ct)
 	return 1;
 }
 
-static void ip_vs_conn_expire(unsigned long data)
+static void ip_vs_conn_expire(unsigned long data)		// 释放cp 回收cp 是通过定时器完成的
 {
 	struct ip_vs_conn *cp = (struct ip_vs_conn *)data;
 

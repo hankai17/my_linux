@@ -313,13 +313,14 @@ static const char * tcp_state_name(int state)
 	return tcp_state_name_table[state] ? tcp_state_name_table[state] : "?";
 }
 
+// https://blog.csdn.net/sinat_20184565/article/details/99655059
 static struct tcp_states_t tcp_states [] = {
 /*	INPUT */
-/*        sNO, sES, sSS, sSR, sFW, sTW, sCL, sCW, sLA, sLI, sSA	*/
-/*syn*/ {{sSR, sES, sES, sSR, sSR, sSR, sSR, sSR, sSR, sSR, sSR }},
-/*fin*/ {{sCL, sCW, sSS, sTW, sTW, sTW, sCL, sCW, sLA, sLI, sTW }},
-/*ack*/ {{sCL, sES, sSS, sES, sFW, sTW, sCL, sCW, sCL, sLI, sES }},
-/*rst*/ {{sCL, sCL, sCL, sSR, sCL, sCL, sCL, sCL, sLA, sLI, sSR }},
+/*             sNO, sES, sSS, sSR, sFW, sTW, sCL, sCW, sLA, sLI, sSA	*/		// 当前状态
+/*收到 syn*/ {{sSR, sES, sES, sSR, sSR, sSR, sSR, sSR, sSR, sSR, sSR }},
+/*收到 fin*/ {{sCL, sCW, sSS, sTW, sTW, sTW, sCL, sCW, sLA, sLI, sTW }},
+/*收到 ack*/ {{sCL, sES, sSS, sES, sFW, sTW, sCL, sCW, sCL, sLI, sES }},
+/*收到 rst*/ {{sCL, sCL, sCL, sSR, sCL, sCL, sCL, sCL, sLA, sLI, sSR }},
 
 /*	OUTPUT */
 /*        sNO, sES, sSS, sSR, sFW, sTW, sCL, sCW, sLA, sLI, sSA	*/
@@ -382,11 +383,11 @@ tcp_set_state_timeout(struct ip_vs_protocol *pp, char *sname, int to)
 				       tcp_state_name_table, sname, to);
 }
 
-static inline int tcp_state_idx(struct tcphdr *th)
+static inline int tcp_state_idx(struct tcphdr *th)			// 这里的优先级很妙  跟 协议栈是契合的
 {
 	if (th->rst)
 		return 3;
-	if (th->syn)
+	if (th->syn)											// syn优先级高于fin
 		return 0;
 	if (th->fin)
 		return 1;
@@ -453,7 +454,7 @@ set_tcp_state(struct ip_vs_protocol *pp, struct ip_vs_conn *cp,
 		}
 	}
 
-	cp->timeout = pp->timeout_table[cp->state = new_state];
+	cp->timeout = pp->timeout_table[cp->state = new_state];			// 状态变化只会影响cp的timeout // 就是说肯定有个定时器 定时回收cp?
 }
 
 
