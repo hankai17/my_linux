@@ -103,10 +103,10 @@ static inline __u32 tcp_acceptable_seq(struct sock *sk, struct tcp_sock *tp)
 static __u16 tcp_advertise_mss(struct sock *sk)
 {
 	struct tcp_sock *tp = tcp_sk(sk);
-	struct dst_entry *dst = __sk_dst_get(sk);
+	struct dst_entry *dst = __sk_dst_get(sk);                                   // 获取路由
 	int mss = tp->advmss;
 
-	if (dst && dst_metric(dst, RTAX_ADVMSS) < mss) {
+	if (dst && dst_metric(dst, RTAX_ADVMSS) < mss) {                            // 路由中的MSS是根据网络设备的MTU得来的 必须尊重
 		mss = dst_metric(dst, RTAX_ADVMSS);
 		tp->advmss = mss;
 	}
@@ -410,7 +410,7 @@ static int tcp_transmit_skb(struct sock *sk, struct sk_buff *skb, int clone_it, 
 		__net_timestamp(skb);
 
 	if (likely(clone_it)) {
-		if (unlikely(skb_cloned(skb)))
+		if (unlikely(skb_cloned(skb)))                              // 克隆新skb出来 (防止重传)
 			skb = pskb_copy(skb, gfp_mask);
 		else
 			skb = skb_clone(skb, gfp_mask);
@@ -465,7 +465,7 @@ static int tcp_transmit_skb(struct sock *sk, struct sk_buff *skb, int clone_it, 
 		tcp_header_size += TCPOLEN_MD5SIG_ALIGNED;
 #endif
 
-	th = (struct tcphdr *) skb_push(skb, tcp_header_size);
+	th = (struct tcphdr *) skb_push(skb, tcp_header_size);              // 封装TCP头
 	skb->h.th = th;
 	skb_set_owner_w(skb, sk);
 
@@ -494,9 +494,9 @@ static int tcp_transmit_skb(struct sock *sk, struct sk_buff *skb, int clone_it, 
 		th->urg			= 1;
 	}
 
-	if (unlikely(tcb->flags & TCPCB_FLAG_SYN)) {
+	if (unlikely(tcb->flags & TCPCB_FLAG_SYN)) {                        // 如果发送syn 握手包
 		tcp_syn_build_options((__be32 *)(th + 1),
-				      tcp_advertise_mss(sk),
+				      tcp_advertise_mss(sk),                            // 计算本机mss
 				      (sysctl_flags & SYSCTL_FLAG_TSTAMPS),
 				      (sysctl_flags & SYSCTL_FLAG_SACK),
 				      (sysctl_flags & SYSCTL_FLAG_WSCALE),
@@ -541,7 +541,7 @@ static int tcp_transmit_skb(struct sock *sk, struct sk_buff *skb, int clone_it, 
 	if (after(tcb->end_seq, tp->snd_nxt) || tcb->seq == tcb->end_seq)
 		TCP_INC_STATS(TCP_MIB_OUTSEGS);
 
-	err = icsk->icsk_af_ops->queue_xmit(skb, 0);
+	err = icsk->icsk_af_ops->queue_xmit(skb, 0);                        // 网络层 发送数据 ip_queue_xmit
 	if (likely(err <= 0))
 		return err;
 
@@ -849,7 +849,7 @@ void tcp_mtup_init(struct sock *sk)
    are READ ONLY outside this function.		--ANK (980731)
  */
 
-unsigned int tcp_sync_mss(struct sock *sk, u32 pmtu)
+unsigned int tcp_sync_mss(struct sock *sk, u32 pmtu)                // 该函数用参数pmtu更新PMTU相关字段 其中icsk->icsk_pmtu_cookie保存的就是之前缓存的PMTU值 根据该PMTU值计算MSS后 将计算结果保存到tp->mss_cache中 该值就是当前最新的MSS值
 {
 	struct tcp_sock *tp = tcp_sk(sk);
 	struct inet_connection_sock *icsk = inet_csk(sk);
@@ -880,7 +880,7 @@ unsigned int tcp_sync_mss(struct sock *sk, u32 pmtu)
  * cannot be large. However, taking into account rare use of URG, this
  * is not a big flaw.
  */
-unsigned int tcp_current_mss(struct sock *sk, int large_allowed)
+unsigned int tcp_current_mss(struct sock *sk, int large_allowed)                // 该接口用于获取当前有效的MSS 并且会根据MTU的大小设定tp->xmit_size_goal变量 该变量后续将用于组织skb 它的取值和TSO/GSO等特性相关
 {
 	struct tcp_sock *tp = tcp_sk(sk);
 	struct dst_entry *dst = __sk_dst_get(sk);
@@ -894,12 +894,12 @@ unsigned int tcp_current_mss(struct sock *sk, int large_allowed)
 		doing_tso = 1;
 
 	if (dst) {
-		u32 mtu = dst_mtu(dst);
-		if (mtu != inet_csk(sk)->icsk_pmtu_cookie)
+		u32 mtu = dst_mtu(dst);                                                 // 获取路由中保存的PMTU值
+		if (mtu != inet_csk(sk)->icsk_pmtu_cookie)                              // icsk_pmut_cookie为上次缓存的PMTU值，其初始值为本端MTU大小 如果二者不等，则说明PMTU发生了变化，需要调用tcp_sync_mss()更新MSS
 			mss_now = tcp_sync_mss(sk, mtu);
 	}
 
-	if (tp->rx_opt.eff_sacks)
+	if (tp->rx_opt.eff_sacks)                                                   // 如果TCP有SACK选项 则从MSS中减去相应的开销
 		mss_now -= (TCPOLEN_SACK_BASE_ALIGNED +
 			    (tp->rx_opt.eff_sacks * TCPOLEN_SACK_PERBLOCK));
 
@@ -1424,7 +1424,7 @@ static int tcp_write_xmit(struct sock *sk, unsigned int mss_now, int nonagle) //
 
 		TCP_SKB_CB(skb)->when = tcp_time_stamp;
 
-		if (unlikely(tcp_transmit_skb(sk, skb, 1, GFP_ATOMIC)))             // 发送
+		if (unlikely(tcp_transmit_skb(sk, skb, 1, GFP_ATOMIC)))             // 发送 真正的函数
 			break;
 
 		/* Advance the send_head.  This one is sent out.
@@ -1447,7 +1447,7 @@ static int tcp_write_xmit(struct sock *sk, unsigned int mss_now, int nonagle) //
  * TCP_CORK or attempt at coalescing tiny packets.
  * The socket must be locked by the caller.
  */
-void __tcp_push_pending_frames(struct sock *sk, struct tcp_sock *tp,
+void __tcp_push_pending_frames(struct sock *sk, struct tcp_sock *tp,        // 发送数据
 			       unsigned int cur_mss, int nonagle)
 {
 	struct sk_buff *skb = sk->sk_send_head;

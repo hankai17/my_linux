@@ -683,7 +683,9 @@ int tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 	/* This should be in poll */
 	clear_bit(SOCK_ASYNC_NOSPACE, &sk->sk_socket->flags);
 
-	mss_now = tcp_current_mss(sk, !(flags&MSG_OOB));
+	mss_now = tcp_current_mss(sk, !(flags&MSG_OOB));                        // 根据MSS将待发送数据切割成一个个的skb
+                                                                            //      由于MSS经过矫正后最终保存在了tp->rx_opt.mss_clamp
+                                                                            // https://blog.csdn.net/xiaoyu_750516366/article/details/85316123
 	size_goal = tp->xmit_size_goal;
 
 	/* Ok commence sending. */

@@ -2712,11 +2712,11 @@ void tcp_parse_options(struct sk_buff *skb, struct tcp_options_received *opt_rx,
 	  			switch(opcode) {
 				case TCPOPT_MSS:
 					if(opsize==TCPOLEN_MSS && th->syn && !estab) {
-						u16 in_mss = ntohs(get_unaligned((__be16 *)ptr));
+						u16 in_mss = ntohs(get_unaligned((__be16 *)ptr));                   // 取得选项中携带的MSS值记录到临时变量in_mss中
 						if (in_mss) {
-							if (opt_rx->user_mss && opt_rx->user_mss < in_mss)
-								in_mss = opt_rx->user_mss;
-							opt_rx->mss_clamp = in_mss;
+							if (opt_rx->user_mss && opt_rx->user_mss < in_mss)              // user_mss是应用程序通过TCP选项TCP_MAXSEG设定的 如果不设置 默认为0
+								in_mss = opt_rx->user_mss;                                  // 如果设定了user_mss并且设定的值小于对端通告的 那么调整in_mss为两者中的最小值
+							opt_rx->mss_clamp = in_mss;                                     // 将min(user_mss, in_mss) 记录到mss_clamp中
 						}
 					}
 					break;

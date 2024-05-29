@@ -1303,7 +1303,7 @@ static struct timewait_sock_ops tcp_timewait_sock_ops = {
 int tcp_v4_conn_request(struct sock *sk, struct sk_buff *skb)               // 收到syn
 {
 	struct inet_request_sock *ireq;
-	struct tcp_options_received tmp_opt;
+	struct tcp_options_received tmp_opt;                                    // eg: 将SYN段中携带的选项先解析到临时变量tmp_opt中
 	struct request_sock *req;
 	__be32 saddr = skb->nh.iph->saddr;
 	__be32 daddr = skb->nh.iph->daddr;
@@ -1353,9 +1353,10 @@ int tcp_v4_conn_request(struct sock *sk, struct sk_buff *skb)               // �
 
 	tcp_clear_options(&tmp_opt);                                            // 对tmp_opt进行初始化tcp的一些选项信息(比如mss/窗口扩大因子等等) // 知识2 三次握手交换什么信息? 在哪个阶段进行?
 	tmp_opt.mss_clamp = 536;
-	tmp_opt.user_mss  = tcp_sk(sk)->rx_opt.user_mss;
+	tmp_opt.user_mss  = tcp_sk(sk)->rx_opt.user_mss;                        // user_mss设置为用户通过套接字选项TCP_MAXSEG设定的值
 
 	tcp_parse_options(skb, &tmp_opt, 0);                                    // 对端的tcp_options_received进行解析 并对本端得tcp_options_received进行初始化
+                                                                            //    里面也会比较SYN段中携带的MSS和user_mss 然后取二者中较小者保存在tmp_opt.mss_clamp中
 
 	if (want_cookie) {
 		tcp_clear_options(&tmp_opt);
@@ -1374,6 +1375,7 @@ int tcp_v4_conn_request(struct sock *sk, struct sk_buff *skb)               // �
 	tmp_opt.tstamp_ok = tmp_opt.saw_tstamp;
 
 	tcp_openreq_init(req, &tmp_opt, skb);                                   // 新建一个inet_request_sock(ireq) 加入到半连接队列 // 0.0TPROXY将req中的mark赋值为skb中的mark
+                                                                            //    里面也会 将 确定下来的MSS记录到了连接请求块的mss字段中: req->mss = rx_opt->mss_clamp
 
 	if (security_inet_conn_request(sk, skb, req))
 		goto drop_and_free;

@@ -487,7 +487,7 @@ struct sock *tcp_create_openreq_child(struct sock *sk, struct request_sock *req,
 #endif
 		if (skb->len >= TCP_MIN_RCVMSS+newtp->tcp_header_len)
 			newicsk->icsk_ack.last_seg_size = skb->len - newtp->tcp_header_len;
-		newtp->rx_opt.mss_clamp = req->mss;
+		newtp->rx_opt.mss_clamp = req->mss;                                     // 参考 tcp_v4_conn_request mss设置
 		TCP_ECN_openreq_child(newtp, req);
 
 		TCP_INC_STATS_BH(TCP_MIB_PASSIVEOPENS);
