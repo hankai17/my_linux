@@ -537,34 +537,35 @@ new_measure:
  * each ACK we send, he increments snd_cwnd and transmits more of his
  * queue.  -DaveM
  */
+// https://blog.csdn.net/bin_linux96/article/details/53141799
 static void tcp_event_data_recv(struct sock *sk, struct tcp_sock *tp, struct sk_buff *skb)
 {
 	struct inet_connection_sock *icsk = inet_csk(sk);
 	u32 now;
 
-	inet_csk_schedule_ack(sk);
+	inet_csk_schedule_ack(sk);  // 设置需要发送的ACK的标志 设置ICSK_ACK_SCHED标志 表明有ack要发送
 
-	tcp_measure_rcv_mss(sk, skb);
+	tcp_measure_rcv_mss(sk, skb); // 估算对端的mss 如果收到了小包 说明对端可能暂时没有数据要发送了 此时会设置ICSK_ACK_PUSHED标志
 
-	tcp_rcv_rtt_measure(tp);
+	tcp_rcv_rtt_measure(tp);    // 没有使用时间戳选项时 接收端rtt计算
 	
 	now = tcp_time_stamp;
 
-	if (!icsk->icsk_ack.ato) {
+	if (!icsk->icsk_ack.ato) {  // 首次接收到带负荷的报文包
 		/* The _first_ data packet received, initialize
 		 * delayed ACK engine.
 		 */
-		tcp_incr_quickack(sk);
-		icsk->icsk_ack.ato = TCP_ATO_MIN;
+		tcp_incr_quickack(sk);  // 设置在快速确认模式中 可以发送的ack数量
+		icsk->icsk_ack.ato = TCP_ATO_MIN; // 40ms
 	} else {
-		int m = now - icsk->icsk_ack.lrcvtime;
+		int m = now - icsk->icsk_ack.lrcvtime;  // 距离上次收到报文包的间隔
 
 		if (m <= TCP_ATO_MIN/2) {
 			/* The fastest case is the first. */
 			icsk->icsk_ack.ato = (icsk->icsk_ack.ato >> 1) + TCP_ATO_MIN / 2;
 		} else if (m < icsk->icsk_ack.ato) {
 			icsk->icsk_ack.ato = (icsk->icsk_ack.ato >> 1) + m;
-			if (icsk->icsk_ack.ato > icsk->icsk_rto)
+			if (icsk->icsk_ack.ato > icsk->icsk_rto)    // ato值不能超过rto
 				icsk->icsk_ack.ato = icsk->icsk_rto;
 		} else if (m > icsk->icsk_rto) {
 			/* Too long gap. Apparently sender failed to
@@ -574,11 +575,11 @@ static void tcp_event_data_recv(struct sock *sk, struct tcp_sock *tp, struct sk_
 			sk_stream_mem_reclaim(sk);
 		}
 	}
-	icsk->icsk_ack.lrcvtime = now;
+	icsk->icsk_ack.lrcvtime = now;  // 更新最后一次收到报文包的时间
 
-	TCP_ECN_check_ce(tp, skb);
+	TCP_ECN_check_ce(tp, skb);      // 如果发现拥塞了 则进入快速确认模式
 
-	if (skb->len >= 128)
+	if (skb->len >= 128)            // 当保温包>128字节 则增大当前接受窗口的阈值
 		tcp_grow_window(sk, tp, skb);
 }
 
@@ -2426,8 +2427,13 @@ static void tcp_ack_probe(struct sock *sk)
 
 	/* Was it a usable window open? */
 
+/*-1-2-3-4-5-6-[7]-[8]-[9]-[10]-*/    /* after == > */
+/*              ^               ^*/
+/*             snd_una          end_seq*/
+
 	if (!after(TCP_SKB_CB(sk->sk_send_head)->end_seq,
-		   tp->snd_una + tp->snd_wnd)) {    // 实际发送的最大seq(una + inflight) > 当前可发送包的最后一个seq 
+		   tp->snd_una + tp->snd_wnd)) {    // 我这里发的太慢了
+                                            // 实际发送的最大seq(una + inflight) > 当前可发送包的最后一个seq 
 		icsk->icsk_backoff = 0;             // 还可以向对端发送数据 删除0窗定时器
 		inet_csk_clear_xmit_timer(sk, ICSK_TIME_PROBE0);
 		/* Socket must be waked up by subsequent tcp_data_snd_check().
