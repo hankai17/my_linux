@@ -124,9 +124,17 @@ int inet_csk_get_port(struct inet_hashinfo *hashinfo,
 	goto tb_not_found;
 tb_found:                                                                           // 场景是 绑定端口时 该端口已在bhash中
 	if (!hlist_empty(&tb->owners)) {                                                //     第一次碰到了tb tb里的owners为空
+/*
++        if (((tb->fastreuse > 0 &&
++              sk->sk_reuse && sk->sk_state != TCP_LISTEN) ||                       // reuseport功能
++             (tb->fastreuseport > 0 &&
++              sk->sk_reuseport && uid_eq(tb->fastuid, uid)))  
+https://segmentfault.com/a/1190000020524323
+*/
+
 		if (sk->sk_reuse > 1)
 			goto success;
-		if (tb->fastreuse > 0 &&
+		if (tb->fastreuse > 0 &&                                                    // 当该端口支持共享且socket也设置了SO_REUSEADDR(fastreuse)并且不为LISTEN状态时，此次bind()可以成功
 		    sk->sk_reuse && sk->sk_state != TCP_LISTEN) {
 			goto success;
 		} else {
@@ -135,6 +143,9 @@ tb_found:                                                                       
 				goto fail_unlock;
 		}
 	}
+
+   
+
 tb_not_found:
 	ret = 1;
 	if (!tb && (tb = inet_bind_bucket_create(hashinfo->bind_bucket_cachep,          // 创建sk挂bhash上

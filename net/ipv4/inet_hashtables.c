@@ -162,8 +162,14 @@ static struct sock *inet_lookup_listener_slow(const struct hlist_head *head,
 }
 
 /* Optimize the common listener case. */
+/*
+    lhash结构
+    80  :   127.0.0.1:80,   192.168.78.4:80
+    443 :   0.0.0.0:443,    192.168.78.4:443,   192.168.78.1:443
+    8443:
+*/
 #define TCP_LHTABLE_SIZE 32
-struct sock *__inet_lookup_listener(struct inet_hashinfo *hashinfo,         // inet_hashinfo是个全局变量里面维护有 ehash(里面又有两个队列: 非tw 一个是tw) lhash bhash(所有在使用端口的)
+struct sock *__inet_lookup_listener(struct inet_hashinfo *hashinfo,         // inet_hashinfo是个全局变量里面维护有 ehash(里面又有两个队列: 非tw 一个是tw) lhash bhash(所有在使用端口的eg:上面)
 				    const __be32 daddr, const unsigned short hnum,
 				    const int dif)
 {

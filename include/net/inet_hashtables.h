@@ -75,9 +75,14 @@ struct inet_ehash_bucket {
  */
 struct inet_bind_bucket {
 	unsigned short		port;
-	signed short		fastreuse;
+	//signed short		fastreuse;
+    signed char        fastreuse;
+    signed char        fastreuseport;
+
+    kuid_t            fastuid;
 	struct hlist_node	node;
-	struct hlist_head	owners;
+	struct hlist_head	owners;         // 所有共享该端口的socket挂到owner成员上。在用户使用bind()时，内核使用TCP:inet_csk_get_port(),UDP:udp_v4_get_port()来绑定端口
+                                        // 当该端口支持共享 且socket也设置了SO_REUSEADDR并且不为LISTEN状态时 此次bind()可以成功
 };
 
 #define inet_bind_bucket_for_each(tb, node, head) \

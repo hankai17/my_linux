@@ -112,7 +112,9 @@ struct proto;
 struct sock_common {
 	unsigned short		skc_family;
 	volatile unsigned char	skc_state;
-	unsigned char		skc_reuse;
+	//unsigned char		skc_reuse;
+    unsigned char        skc_reuse:4;
+    unsigned char        skc_reuseport:4;
 	int			skc_bound_dev_if;
 	struct hlist_node	skc_node;
 	struct hlist_node	skc_bind_node;
