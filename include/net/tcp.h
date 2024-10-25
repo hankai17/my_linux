@@ -728,7 +728,7 @@ static inline __u32 tcp_current_ssthresh(const struct sock *sk)
 			    (tp->snd_cwnd >> 2)));
 }
 
-static inline void tcp_sync_left_out(struct tcp_sock *tp)
+static inline void tcp_sync_left_out(struct tcp_sock *tp)           // 计算已离开主机在网络中 未确认的段数
 {
 	if (tp->rx_opt.sack_ok &&
 	    (tp->sacked_out >= tp->packets_out - tp->lost_out))
