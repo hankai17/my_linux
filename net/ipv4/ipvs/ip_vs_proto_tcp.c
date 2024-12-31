@@ -69,7 +69,7 @@ tcp_conn_out_get(const struct sk_buff *skb, struct ip_vs_protocol *pp,
 
 
 static int
-tcp_conn_schedule(struct sk_buff *skb,
+tcp_conn_schedule(struct sk_buff *skb,                                      // hankai2 根据service调度策略 分配conn
 		  struct ip_vs_protocol *pp,
 		  int *verdict, struct ip_vs_conn **cpp)
 {
@@ -84,7 +84,7 @@ tcp_conn_schedule(struct sk_buff *skb,
 	}
 
 	if (th->syn &&
-	    (svc = ip_vs_service_get(skb->mark, skb->nh.iph->protocol,
+	    (svc = ip_vs_service_get(skb->mark, skb->nh.iph->protocol,          // 握手首包 且 客户请求的目的ip/port/protocol 均符合ipvs配置配置项 // 获取service
 				     skb->nh.iph->daddr, th->dest))) {
 		if (ip_vs_todrop()) {
 			/*
@@ -100,7 +100,7 @@ tcp_conn_schedule(struct sk_buff *skb,
 		 * Let the virtual server select a real server for the
 		 * incoming connection, and create a connection entry.
 		 */
-		*cpp = ip_vs_schedule(svc, skb);
+		*cpp = ip_vs_schedule(svc, skb);                                    // 根据service调度策略 分配conn
 		if (!*cpp) {
 			*verdict = ip_vs_leave(svc, skb, pp);
 			return 0;
@@ -606,9 +606,9 @@ struct ip_vs_protocol ip_vs_protocol_tcp = {
 	.exit =			ip_vs_tcp_exit,
 	.register_app =		tcp_register_app,
 	.unregister_app =	tcp_unregister_app,
-	.conn_schedule =	tcp_conn_schedule,
-	.conn_in_get =		tcp_conn_in_get,
-	.conn_out_get =		tcp_conn_out_get,
+	.conn_schedule =	tcp_conn_schedule,      // hankai2
+	.conn_in_get =		tcp_conn_in_get,        // 查询全局hash_table
+	.conn_out_get =		tcp_conn_out_get,       // 同上
 	.snat_handler =		tcp_snat_handler,
 	.dnat_handler =		tcp_dnat_handler,
 	.csum_check =		tcp_csum_check,

@@ -68,7 +68,7 @@ __ip_vs_get_out_rt(struct ip_vs_conn *cp, u32 rtos)
 	if (dest) {
 		spin_lock(&dest->dst_lock);
 		if (!(rt = (struct rtable *)
-		      __ip_vs_dst_check(dest, rtos, 0))) {
+		      __ip_vs_dst_check(dest, rtos, 0))) {                      // 找不到路由表
 			struct flowi fl = {
 				.oif = 0,
 				.nl_u = {
@@ -78,14 +78,14 @@ __ip_vs_get_out_rt(struct ip_vs_conn *cp, u32 rtos)
 						.tos = rtos, } },
 			};
 
-			if (ip_route_output_key(&rt, &fl)) {
+			if (ip_route_output_key(&rt, &fl)) {                        // 查找真实服务器的路由
 				spin_unlock(&dest->dst_lock);
 				IP_VS_DBG_RL("ip_route_output error, "
 					     "dest: %u.%u.%u.%u\n",
 					     NIPQUAD(dest->addr));
 				return NULL;
 			}
-			__ip_vs_dst_set(dest, rtos, dst_clone(&rt->u.dst));
+			__ip_vs_dst_set(dest, rtos, dst_clone(&rt->u.dst));         // cache路由
 			IP_VS_DBG(10, "new dst %u.%u.%u.%u, refcnt=%d, rtos=%X\n",
 				  NIPQUAD(dest->addr),
 				  atomic_read(&rt->u.dst.__refcnt), rtos);
@@ -267,7 +267,7 @@ ip_vs_nat_xmit(struct sk_buff *skb, struct ip_vs_conn *cp,              // 改�
 	/* mangle the packet */
 	if (pp->dnat_handler && !pp->dnat_handler(&skb, pp, cp))
 		goto tx_error;
-	skb->nh.iph->daddr = cp->daddr;                                     // 目的ip地址替换
+	skb->nh.iph->daddr = cp->daddr;                                     // 目的ip地址替换成d_addr (c->v->d)
 	ip_send_check(skb->nh.iph);
 
 	IP_VS_DBG_PKT(10, pp, skb, 0, "After DNAT");
@@ -279,7 +279,7 @@ ip_vs_nat_xmit(struct sk_buff *skb, struct ip_vs_conn *cp,              // 改�
 	/* Another hack: avoid icmp_send in ip_fragment */
 	skb->local_df = 1;
 
-	IP_VS_XMIT(skb, rt);
+	IP_VS_XMIT(skb, rt);                                                // 直接跳到local_out链 // 查找路由后 发出去
 
 	LeaveFunction(10);
 	return NF_STOLEN;

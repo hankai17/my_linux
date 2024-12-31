@@ -126,7 +126,7 @@ static unsigned int ip_vs_conn_hashkey(unsigned proto, __be32 addr, __be16 port)
  *	Hashes ip_vs_conn in ip_vs_conn_tab by proto,addr,port.
  *	returns bool success.
  */
-static inline int ip_vs_conn_hash(struct ip_vs_conn *cp)
+static inline int ip_vs_conn_hash(struct ip_vs_conn *cp)                // session表: <三元组:客户端ip/port + protocol, cp->c>
 {
 	unsigned hash;
 	int ret;
@@ -193,7 +193,7 @@ static inline struct ip_vs_conn *__ip_vs_conn_in_get
 	unsigned hash;
 	struct ip_vs_conn *cp;
 
-	hash = ip_vs_conn_hashkey(protocol, s_addr, s_port);
+	hash = ip_vs_conn_hashkey(protocol, s_addr, s_port);                        // 三元组: 客户端的ip/port/protocol
 
 	ct_read_lock(hash);
 
@@ -214,7 +214,7 @@ static inline struct ip_vs_conn *__ip_vs_conn_in_get
 	return NULL;
 }
 
-struct ip_vs_conn *ip_vs_conn_in_get
+struct ip_vs_conn *ip_vs_conn_in_get                                            // 传入5元组 实际根据3元组计算一个key查询
 (int protocol, __be32 s_addr, __be16 s_port, __be32 d_addr, __be16 d_port)
 {
 	struct ip_vs_conn *cp;
@@ -345,7 +345,7 @@ void ip_vs_conn_fill_cport(struct ip_vs_conn *cp, __be16 cport)
  *	Bind a connection entry with the corresponding packet_xmit.
  *	Called by ip_vs_conn_new.
  */
-static inline void ip_vs_bind_xmit(struct ip_vs_conn *cp) // 0 总入口
+static inline void ip_vs_bind_xmit(struct ip_vs_conn *cp)
 {
 	switch (IP_VS_FWD_METHOD(cp)) {
 	case IP_VS_CONN_F_MASQ:
@@ -646,7 +646,7 @@ ip_vs_conn_new(int proto, __be32 caddr, __be16 cport, __be32 vaddr, __be16 vport
 	cp->timeout = 3*HZ;
 
 	/* Bind its packet transmitter */
-	ip_vs_bind_xmit(cp);                                            // 根据LVS类型绑定connection的发送函数
+	ip_vs_bind_xmit(cp);                                            // 根据LVS类型(nat/dr/..)绑定connection的发送函数
 
 	if (unlikely(pp && atomic_read(&pp->appcnt)))
 		ip_vs_bind_app(cp, pp);

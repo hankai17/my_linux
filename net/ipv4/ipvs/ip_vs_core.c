@@ -407,7 +407,7 @@ ip_vs_schedule(struct ip_vs_service *svc, const struct sk_buff *skb)        // �
 		return NULL;
 	}
 
-	dest = svc->scheduler->schedule(svc, skb);                              // 按照既定调度策略找到 real_server
+	dest = svc->scheduler->schedule(svc, skb);                              // 按照既定调度策略找到 real_server eg:(ip_vs_rr_schedule)
 	if (dest == NULL) {
 		IP_VS_DBG(1, "Schedule: no dest found.\n");
 		return NULL;
@@ -416,7 +416,7 @@ ip_vs_schedule(struct ip_vs_service *svc, const struct sk_buff *skb)        // �
 	/*
 	 *    Create a connection entry.
 	 */
-	cp = ip_vs_conn_new(iph->protocol,                                      // 创建新的connection
+	cp = ip_vs_conn_new(iph->protocol,                                      // 传入cvd 初始化conn
 			    iph->saddr, pptr[0],
 			    iph->daddr, pptr[1],
 			    dest->addr, dest->port?dest->port:pptr[1],
@@ -725,7 +725,7 @@ static inline int is_tcp_reset(const struct sk_buff *skb)
  *      rewrite addresses of the packet and send it on its way...
  */
 static unsigned int
-ip_vs_out(unsigned int hooknum, struct sk_buff **pskb,
+ip_vs_out(unsigned int hooknum, struct sk_buff **pskb,                  // hankai2 Forward链 针对出方向
 	  const struct net_device *in, const struct net_device *out,
 	  int (*okfn)(struct sk_buff *))
 {
@@ -750,7 +750,7 @@ ip_vs_out(unsigned int hooknum, struct sk_buff **pskb,
 		iph = skb->nh.iph;
 	}
 
-	pp = ip_vs_proto_get(iph->protocol);                                // 获取四层结构
+	pp = ip_vs_proto_get(iph->protocol);                                // 获取四层协议
 	if (unlikely(!pp))
 		return NF_ACCEPT;
 
@@ -769,7 +769,7 @@ ip_vs_out(unsigned int hooknum, struct sk_buff **pskb,
 	/*
 	 * Check if the packet belongs to an existing entry
 	 */
-	cp = pp->conn_out_get(skb, pp, iph, ihl, 0);                        // 获取当前connection  eg: ip_vs_proto_tcp.c
+	cp = pp->conn_out_get(skb, pp, iph, ihl, 0);                        // 根据dst_ip(client的ip)获取conn eg: tcp_conn_out_get
 
 	if (unlikely(!cp)) {
 		if (sysctl_ip_vs_nat_icmp_send &&
@@ -810,7 +810,7 @@ ip_vs_out(unsigned int hooknum, struct sk_buff **pskb,
 	if (pp->snat_handler && !pp->snat_handler(pskb, pp, cp))
 		goto drop;
 	skb = *pskb;
-	skb->nh.iph->saddr = cp->vaddr;                                     // 取四层eg tcp的vaddr
+	skb->nh.iph->saddr = cp->vaddr;                                     // 取四层eg tcp的vaddr // (c<-v<-d)替换成vip地址 然后发送给客户端
 	ip_send_check(skb->nh.iph);                                         // 重新计算第一个分片的ip首部校验和 
 
  	/* For policy routing, packets originating from this
@@ -947,7 +947,7 @@ ip_vs_in_icmp(struct sk_buff **pskb, int *related, unsigned int hooknum)
  *	and send it on its way...
  */
 static unsigned int
-ip_vs_in(unsigned int hooknum, struct sk_buff **pskb,
+ip_vs_in(unsigned int hooknum, struct sk_buff **pskb,                               // hankai1 LOCAL_IN netfilter入口
 	 const struct net_device *in, const struct net_device *out,
 	 int (*okfn)(struct sk_buff *))
 {
@@ -991,12 +991,13 @@ ip_vs_in(unsigned int hooknum, struct sk_buff **pskb,
 	/*
 	 * Check if the packet belongs to an existing connection entry
 	 */
-	cp = pp->conn_in_get(skb, pp, iph, ihl, 0);                                     // 调用proto结构的 conn_in_get 获取connection connection保存在全局表ip_vs_conn_table[hash]中
+	cp = pp->conn_in_get(skb, pp, iph, ihl, 0);                                     // 调用proto结构的 conn_in_get 获取cp eg:(tcp是tcp_conn_in_get) 
+                                                                                    // cp保存在全局表ip_vs_conn_table[hash(hash是由三元组(client_ip/port/protocol)计算而得)]中
 
 	if (unlikely(!cp)) {
 		int v;
 
-		if (!pp->conn_schedule(skb, pp, &v, &cp))                                   // 查找失败则调用 proto->conn_schedule() 创建一个connection
+		if (!pp->conn_schedule(skb, pp, &v, &cp))                                   // 分配conn (tcp是tcp_conn_schedule)
 			return v;
 	}
 
@@ -1023,10 +1024,10 @@ ip_vs_in(unsigned int hooknum, struct sk_buff **pskb,
 		return NF_DROP;
 	}
 
-	ip_vs_in_stats(cp, skb);                                                // 更新统计信息
+	ip_vs_in_stats(cp, skb);                                                        // 更新统计信息
 	restart = ip_vs_set_state(cp, IP_VS_DIR_INPUT, skb, pp);
 	if (cp->packet_xmit)
-		ret = cp->packet_xmit(skb, cp, pp);                                 // 发包
+		ret = cp->packet_xmit(skb, cp, pp);                                         // 发包 (nat是ip_vs_nat_xmit)
 		/* do not touch skb anymore */
 	else {
 		IP_VS_DBG_RL("warning: packet_xmit is null");
@@ -1075,7 +1076,7 @@ ip_vs_forward_icmp(unsigned int hooknum, struct sk_buff **pskb,
    or VS/NAT(change destination), so that filtering rules can be
    applied to IPVS. */
 static struct nf_hook_ops ip_vs_in_ops = {
-	.hook		= ip_vs_in,
+	.hook		= ip_vs_in,                                                     // hankai1 入方向 dnat
 	.owner		= THIS_MODULE,
 	.pf		= PF_INET,
 	.hooknum        = NF_IP_LOCAL_IN,
@@ -1084,7 +1085,7 @@ static struct nf_hook_ops ip_vs_in_ops = {
 
 /* After packet filtering, change source only for VS/NAT */
 static struct nf_hook_ops ip_vs_out_ops = {
-	.hook		= ip_vs_out,
+	.hook		= ip_vs_out,                                                    // hankai2 出方向 snat
 	.owner		= THIS_MODULE,
 	.pf		= PF_INET,
 	.hooknum        = NF_IP_FORWARD,

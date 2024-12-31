@@ -426,7 +426,7 @@ ip_vs_service_get(__u32 fwmark, __u16 protocol, __be32 vaddr, __be16 vport)
 	 *	Check the table hashed by <protocol,addr,port>
 	 *	for "full" addressed entries
 	 */
-	svc = __ip_vs_service_get(protocol, vaddr, vport);
+	svc = __ip_vs_service_get(protocol, vaddr, vport);                          // 根据 客户请求的目的ip/port/protocol 看是否存在该服务
 
 	if (svc == NULL
 	    && protocol == IPPROTO_TCP
