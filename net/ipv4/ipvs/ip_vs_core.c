@@ -219,7 +219,7 @@ ip_vs_sched_persist(struct ip_vs_service *svc,
 	__be32  snet;	 /* source network of the client, after masking */
 
 	/* Mask saddr with the netmask to adjust template granularity */
-	snet = iph->saddr & svc->netmask;
+	snet = iph->saddr & svc->netmask;                                               // 获取客户端的ip&mask
 
 	IP_VS_DBG(6, "p-schedule: src %u.%u.%u.%u:%u dest %u.%u.%u.%u:%u "
 		  "mnet %u.%u.%u.%u\n",
@@ -240,10 +240,10 @@ ip_vs_sched_persist(struct ip_vs_service *svc,
 	 * service, and a template like <caddr, 0, vaddr, vport, daddr, dport>
 	 * is created for other persistent services.
 	 */
-	if (ports[1] == svc->port) {
+	if (ports[1] == svc->port) {                                                    // 目的端口命中 lvs服务
 		/* Check if a template already exists */
 		if (svc->port != FTPPORT)
-			ct = ip_vs_ct_in_get(iph->protocol, snet, 0,
+			ct = ip_vs_ct_in_get(iph->protocol, snet, 0,                            // 根据二元组client_ip + protocol 查找hash
 					       iph->daddr, ports[1]);
 		else
 			ct = ip_vs_ct_in_get(iph->protocol, snet, 0,
@@ -267,7 +267,7 @@ ip_vs_sched_persist(struct ip_vs_service *svc,
 			 * for ftp service.
 			 */
 			if (svc->port != FTPPORT)
-				ct = ip_vs_conn_new(iph->protocol,
+				ct = ip_vs_conn_new(iph->protocol,                                  // 分配conn template
 						    snet, 0,
 						    iph->daddr,
 						    ports[1],
@@ -287,7 +287,7 @@ ip_vs_sched_persist(struct ip_vs_service *svc,
 			ct->timeout = svc->timeout;
 		} else {
 			/* set destination with the found template */
-			dest = ct->dest;
+			dest = ct->dest;                                                        // 指向conn_template模板中的dest
 		}
 		dport = dest->port;
 	} else {
@@ -349,7 +349,7 @@ ip_vs_sched_persist(struct ip_vs_service *svc,
 	/*
 	 *    Create a new connection according to the template
 	 */
-	cp = ip_vs_conn_new(iph->protocol,
+	cp = ip_vs_conn_new(iph->protocol,                                      // 分配conn
 			    iph->saddr, ports[0],
 			    iph->daddr, ports[1],
 			    dest->addr, dport,
@@ -363,7 +363,7 @@ ip_vs_sched_persist(struct ip_vs_service *svc,
 	/*
 	 *    Add its control
 	 */
-	ip_vs_control_add(cp, ct);
+	ip_vs_control_add(cp, ct);                                              // 加入conn_template模板?
 	ip_vs_conn_put(ct);
 
 	ip_vs_conn_stats(cp, svc);

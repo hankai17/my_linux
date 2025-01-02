@@ -455,6 +455,7 @@ set_tcp_state(struct ip_vs_protocol *pp, struct ip_vs_conn *cp,
 	}
 
 	cp->timeout = pp->timeout_table[cp->state = new_state];			// 状态变化只会影响cp的timeout // 就是说肯定有个定时器 定时回收cp?
+                                                                    // 可通过命令行 ipvsadm --set tcp tcpfin udp 设置超时时间
 }
 
 

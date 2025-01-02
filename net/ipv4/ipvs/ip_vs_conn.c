@@ -233,7 +233,7 @@ struct ip_vs_conn *ip_vs_conn_in_get                                            
 }
 
 /* Get reference to connection template */
-struct ip_vs_conn *ip_vs_ct_in_get
+struct ip_vs_conn *ip_vs_ct_in_get                                              // 根据 2元组: protocol + clientIP
 (int protocol, __be32 s_addr, __be16 s_port, __be32 d_addr, __be16 d_port)
 {
 	unsigned hash;
