@@ -312,7 +312,7 @@ struct ip_vs_conn *ip_vs_conn_out_get
 /*
  *      Put back the conn and restart its timer with its timeout
  */
-void ip_vs_conn_put(struct ip_vs_conn *cp)
+void ip_vs_conn_put(struct ip_vs_conn *cp)                              // 重新touch 一下timer
 {
 	/* reset it expire in its timeout */
 	mod_timer(&cp->timer, jiffies+cp->timeout);
@@ -527,7 +527,7 @@ int ip_vs_check_template(struct ip_vs_conn *ct)
 	return 1;
 }
 
-static void ip_vs_conn_expire(unsigned long data)		// 释放cp 回收cp 是通过定时器完成的
+static void ip_vs_conn_expire(unsigned long data)		                // 释放cp 回收cp 是通过定时器完成的
 {
 	struct ip_vs_conn *cp = (struct ip_vs_conn *)data;
 
@@ -547,13 +547,13 @@ static void ip_vs_conn_expire(unsigned long data)		// 释放cp 回收cp 是通�
 	/*
 	 *	unhash it if it is hashed in the conn table
 	 */
-	if (!ip_vs_conn_unhash(cp))
+	if (!ip_vs_conn_unhash(cp))                                         // 把conn 从全局hash中摘下来
 		goto expire_later;
 
 	/*
 	 *	refcnt==1 implies I'm the only one referrer
 	 */
-	if (likely(atomic_read(&cp->refcnt) == 1)) {
+	if (likely(atomic_read(&cp->refcnt) == 1)) {                        // 没有引用了 一般释放流程 // 什么时候发送rst?
 		/* delete the timer if it is activated by other users */
 		if (timer_pending(&cp->timer))
 			del_timer(&cp->timer);
@@ -611,9 +611,9 @@ ip_vs_conn_new(int proto, __be32 caddr, __be16 cport, __be32 vaddr, __be16 vport
 
 	memset(cp, 0, sizeof(*cp));
 	INIT_LIST_HEAD(&cp->c_list);                                    // 初始化connection
-	init_timer(&cp->timer);
+	init_timer(&cp->timer);                                         // 初始化conn定时器
 	cp->timer.data     = (unsigned long)cp;
-	cp->timer.function = ip_vs_conn_expire;
+	cp->timer.function = ip_vs_conn_expire;                         // https://www.cnblogs.com/qq78292959/category/386496.html
 	cp->protocol	   = proto;
 	cp->caddr	   = caddr;
 	cp->cport	   = cport;

@@ -1020,7 +1020,7 @@ ip_vs_in(unsigned int hooknum, struct sk_buff **pskb,                           
 		}
 		/* don't restart its timer, and silently
 		   drop the packet. */
-		__ip_vs_conn_put(cp);
+		__ip_vs_conn_put(cp);                                                       // touch一下定时器
 		return NF_DROP;
 	}
 
