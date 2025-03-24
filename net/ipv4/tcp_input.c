@@ -2941,12 +2941,41 @@ static int tcp_disordered_ack(const struct sock *sk, const struct sk_buff *skb)
                                                                                                         // 总结起来就是: 一个纯粹的ack包 且ack的正确 
 }
 
+/*
+int16_t  -128~127
+0 1 1 1    1 1 1 1      127
+0 0 0 0    0 0 1 0      2
+0 0 0 0    0 0 0 1      1
+0 0 0 0    0 0 0 0      0
+
+1 1 1 1    1 1 1 1      -1
+1 1 1 1    1 1 1 0      -2
+1 0 0 0    0 0 0 1      -127
+1 0 0 0    0 0 0 0      -128
+
+假设有uint16_t两个数 一个是255 一个是255+2溢出后的结果2
+回环的2   跟255比较大小     都转为有符号数: 2 > 255  (255变成负数了(-1))
+回环的127   跟255比较大小   都转为有符号数: 127 > 255 
+回环的128   跟255比较大小   都转为有符号数: 128(-128) < 255(-1)   该场景下(转为有符号数比较则失效了)
+
+两个uint16_t类型的数比较 当原始值超过了128 而新值小于128 则可将两个强转为有符号后比较
+
+新来的时间戳小 而且 是真正的小而非环绕|溢出后的"小"
+
+|------------|------------|
+            128
+
+https://zhuanlan.zhihu.com/p/550031074
+
+
+*/
+
 static inline int tcp_paws_discard(const struct sock *sk, const struct sk_buff *skb)
 {
 	const struct tcp_sock *tp = tcp_sk(sk);
 	return ((s32)(tp->rx_opt.ts_recent - tp->rx_opt.rcv_tsval) > TCP_PAWS_WINDOW &&     // 已知新时间(rcv_tsval)戳小 时间戳差<重放窗口(1s)也是可以接受的 场景: 乱序重复的ack
 		xtime.tv_sec < tp->rx_opt.ts_recent_stamp + TCP_PAWS_24DAYS &&                  
-		!tcp_disordered_ack(sk, skb));                                                  // 那么总结起来就是: 新时间戳小且小的离谱 且 距离上次收包小于24天 且 不是ack  就拒绝该包
+		!tcp_disordered_ack(sk, skb));                                                  // 那么总结起来就是: 新时间戳小且小的离谱 且 距离上次收包小于24天(新来的时间戳是真|假的小而非环绕) 且 不是ack  就拒绝该包
 }
 
 /* Check segment sequence number for validity.
