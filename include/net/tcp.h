@@ -1010,12 +1010,12 @@ static inline int tcp_fin_time(const struct sock *sk)
 
 static inline int tcp_paws_check(const struct tcp_options_received *rx_opt, int rst)    // 返回0成功 返回1检测失败 注意与tcp_paws_discard区别
 {
-	if ((s32)(rx_opt->rcv_tsval - rx_opt->ts_recent) >= 0)                              // 新时间戳大则不拒绝 // ts_recent以时是最近一次更新时间戳时间
+	if ((s32)(rx_opt->rcv_tsval - rx_opt->ts_recent) >= 0)                              // 新时间戳大 或 新来的时间戳小但绕后距离小于2^31 则不拒绝 // ts_recent以时是最近一次更新时间戳时间
 		return 0;
                                                                                         // ---------------------|
-                                                                                        //                      \/ 以下场景: 即新来的时间戳小 
+                                                                                        //                      \/ 以下场景: 即新来的时间戳小 或者 新来时间小且绕后距离大于2^31 // rfc规定 绕后距离大于2^31则discard
 
-	if (xtime.tv_sec >= rx_opt->ts_recent_stamp + TCP_PAWS_24DAYS)                      // 当前时间(xtime.tv_sec)距离上次收包 超过24天 则检测成功 // 24天把时间戳用溢出了?
+	if (xtime.tv_sec >= rx_opt->ts_recent_stamp + TCP_PAWS_24DAYS)                      // 当前时间(xtime.tv_sec)距离上次收包 超过24天(绕后距离大于2^31) 则检测成功 // 24天把时间戳用溢出了 // 即确实是24天没有收到包
 		return 0;
 
 	/* RST segments are not recommended to carry timestamp,
