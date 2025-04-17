@@ -219,7 +219,7 @@ int ip_mc_output(struct sk_buff *skb) //对于从本地输出或是需进行转�
 	 */
 	IP_INC_STATS(IPSTATS_MIB_OUTREQUESTS);
 
-	skb->dev = dev;
+	skb->dev = dev;                     // dev 由路由决定
 	skb->protocol = htons(ETH_P_IP); //设置输出报文的输出网卡设备及协议
 
 	/*

@@ -7,6 +7,32 @@
  * Ethtool interface from: Eric W. Biederman <ebiederm@xmission.com>
  *
  */
+/*
+# 创建 veth pair
+ip link add veth0 type veth peer name veth1
+
+# 启用接口
+ip link set veth0 up
+ip link set veth1 up
+
+# 查看接口
+ip addr show
+
+# 将 veth1 移动到一个网络命名空间
+ip netns add mynamespace
+ip link set veth1 netns mynamespace
+
+# 在命名空间中配置 IP 地址
+ip netns exec mynamespace ip addr add 192.168.1.2/24 dev veth1
+ip netns exec mynamespace ip link set veth1 up
+
+# 在主机上配置 IP 地址
+ip addr add 192.168.1.1/24 dev veth0
+
+Docker：在 Docker 中，每个容器创建时，Docker 会自动为其创建一个 veth 对。一个端点连接到容器的网络命名空间，另一个端点连接到 Docker 的桥接网络（如 docker0）。
+网络隔离：通过将 veth 设备放置在不同的网络命名空间，可以实现容器之间的网络隔离。
+连接桥接：veth 可以与 Linux 桥接（如 brctl）一起使用，将多个容器连接到同一个网络。
+*/
 
 #include <linux/netdevice.h>
 #include <linux/ethtool.h>
@@ -148,7 +174,8 @@ static const struct ethtool_ops veth_ethtool_ops = {
  * xmit
  */
 
-static netdev_tx_t veth_xmit(struct sk_buff *skb, struct net_device *dev)
+static netdev_tx_t veth_xmit(struct sk_buff *skb, struct net_device *dev)       // hankai4 通过veth发送skb  (hankai3.2中注册)
+                                                                                // 此时skb->dev 已由路由确定好了 即为对端
 {
 	struct net_device *rcv = NULL;
 	struct veth_priv *priv, *rcv_priv;
@@ -157,8 +184,8 @@ static netdev_tx_t veth_xmit(struct sk_buff *skb, struct net_device *dev)
 
 	skb_orphan(skb);
 
-	priv = netdev_priv(dev);
-	rcv = priv->peer;
+	priv = netdev_priv(dev);                                                    // hankai4.1 获取veth的私有数据
+	rcv = priv->peer;                                                           // 获取peer 即对端
 	rcv_priv = netdev_priv(rcv);
 
 	cpu = smp_processor_id();
@@ -189,7 +216,7 @@ static netdev_tx_t veth_xmit(struct sk_buff *skb, struct net_device *dev)
 	rcv_stats->rx_bytes += length;
 	rcv_stats->rx_packets++;
 
-	netif_rx(skb);
+	netif_rx(skb);                                                              // hankai4.2 扔给协议栈
 	return NETDEV_TX_OK;
 
 tx_drop:
@@ -300,17 +327,17 @@ static const struct net_device_ops veth_netdev_ops = {
 	.ndo_init            = veth_dev_init,
 	.ndo_open            = veth_open,
 	.ndo_stop            = veth_close,
-	.ndo_start_xmit      = veth_xmit,
+	.ndo_start_xmit      = veth_xmit,                                   // 通过veth发送skb
 	.ndo_change_mtu      = veth_change_mtu,
 	.ndo_get_stats       = veth_get_stats,
 	.ndo_set_mac_address = eth_mac_addr,
 };
 
-static void veth_setup(struct net_device *dev)
+static void veth_setup(struct net_device *dev)                          // hankai3 初始化并启动veth设备
 {
-	ether_setup(dev);
+	ether_setup(dev);                                                   // hankai3.1 以太网设备的通用初始化 
 
-	dev->netdev_ops = &veth_netdev_ops;
+	dev->netdev_ops = &veth_netdev_ops;                                 // hankai3.2 veth的操作列表，其中包括veth的发送函数veth_xmit
 	dev->ethtool_ops = &veth_ethtool_ops;
 	dev->features |= NETIF_F_LLTX;
 	dev->destructor = veth_dev_free;
@@ -337,7 +364,7 @@ static int veth_validate(struct nlattr *tb[], struct nlattr *data[])
 
 static struct rtnl_link_ops veth_link_ops;
 
-static int veth_newlink(struct net_device *dev,
+static int veth_newlink(struct net_device *dev,                         // hankai2 新加入一条veth链接 //  ip link add veth1 type veth peer name veth2  
 			 struct nlattr *tb[], struct nlattr *data[])
 {
 	int err;
@@ -353,7 +380,7 @@ static int veth_newlink(struct net_device *dev,
 	 * skip it since no info from it is useful yet
 	 */
 
-	if (data != NULL && data[VETH_INFO_PEER] != NULL) {
+	if (data != NULL && data[VETH_INFO_PEER] != NULL) {                 // hankai2.1 首先创建并注册peer
 		struct nlattr *nla_peer;
 
 		nla_peer = data[VETH_INFO_PEER];
@@ -377,14 +404,14 @@ static int veth_newlink(struct net_device *dev,
 	else
 		snprintf(ifname, IFNAMSIZ, DRV_NAME "%%d");
 
-	peer = rtnl_create_link(dev_net(dev), ifname, &veth_link_ops, tbp);
+	peer = rtnl_create_link(dev_net(dev), ifname, &veth_link_ops, tbp); // hankai2.1 创建peer
 	if (IS_ERR(peer))
 		return PTR_ERR(peer);
 
 	if (tbp[IFLA_ADDRESS] == NULL)
 		random_ether_addr(peer->dev_addr);
 
-	err = register_netdevice(peer);
+	err = register_netdevice(peer);                                     // hankai2.2 注册peer
 	if (err < 0)
 		goto err_register_peer;
 
@@ -421,11 +448,11 @@ static int veth_newlink(struct net_device *dev,
 	 * tie the deviced together
 	 */
 
-	priv = netdev_priv(dev);
+	priv = netdev_priv(dev);                                            // hankai2.3 互相将peer保存到private中，在xmit的时候使用
 	priv->peer = peer;
 
 	priv = netdev_priv(peer);
-	priv->peer = dev;
+	priv->peer = dev;                                                   // https://blog.csdn.net/npy_lp/article/details/7090541
 	return 0;
 
 err_register_dev:
@@ -453,7 +480,7 @@ static void veth_dellink(struct net_device *dev)
 
 static const struct nla_policy veth_policy[VETH_INFO_MAX + 1];
 
-static struct rtnl_link_ops veth_link_ops = {
+static struct rtnl_link_ops veth_link_ops = {       // hankai1.1 其中veth_link_ops是与ip link一一对应的
 	.kind		= DRV_NAME,
 	.priv_size	= sizeof(struct veth_priv),
 	.setup		= veth_setup,
@@ -470,7 +497,7 @@ static struct rtnl_link_ops veth_link_ops = {
 
 static __init int veth_init(void)
 {
-	return rtnl_link_register(&veth_link_ops);
+	return rtnl_link_register(&veth_link_ops);      // hankai1 向ip link注册服务
 }
 
 static __exit void veth_exit(void)

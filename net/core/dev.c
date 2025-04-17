@@ -1573,7 +1573,11 @@ DEFINE_PER_CPU(struct netif_rx_stats, netdev_rx_stat) = { 0, };
  *
  */
 
-int netif_rx(struct sk_buff *skb)                               // 用于非NAPI方式 将网卡报文拷到接口层缓冲队列中
+int netif_rx(struct sk_buff *skb)                               // 用于非NAPI方式 将网卡报文拷到接口层缓冲队列中 非NAPI设备对应的中断上半部
+                                                                // 非NAPI设备: 每次都是通过中断通知 在设备调度处理数据期间允许中断 会继续收包
+                                                                // NAPI设备: 首次数据包的接收使用中断的方式 而后续的数据包就会使用轮询处理了 也就是中断+轮询 在设备调度处理数据期间 禁止中断
+                                                                // 驱动程序接收到一个数据包时 它会调用 netif_rx 将该数据包传递给网络协议栈 (即该函数是 驱动层调用 通常会在软中断上下文中执行)
+                                                                // 获取适当的cpu 并将skb放到该cpu接受队列 然后软中断
 {
 	struct softnet_data *queue;
 	unsigned long flags;
@@ -1598,11 +1602,11 @@ int netif_rx(struct sk_buff *skb)                               // 用于非NAPI
 enqueue:
 			dev_hold(skb->dev);
 			__skb_queue_tail(&queue->input_pkt_queue, skb);
-			local_irq_restore(flags);
+			local_irq_restore(flags);                           // 将skb包 扔到队列后需要 唤醒软中断 调用对应设备来收包
 			return NET_RX_SUCCESS;
 		}
 
-		netif_rx_schedule(&queue->backlog_dev);                 // 输入队列为空 即该队列没有被软中断处理过 因此将数据包添加到输入队列 & 将虚网卡加到轮训队列 
+		netif_rx_schedule(&queue->backlog_dev);                 // 输入队列为空 即该队列没有被软中断处理过 因此将数据包(skb)添加到输入队列 & 将虚网卡(skb->dev)加到轮训队列 
                                                                 // 最后激活数据包输入软中断 在软中断中调backlog_dev虚网卡的轮训函数process_backlog 将报文传递到上层协议
 		goto enqueue;
 	}
