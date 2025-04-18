@@ -216,7 +216,7 @@ static netdev_tx_t veth_xmit(struct sk_buff *skb, struct net_device *dev)       
 	rcv_stats->rx_bytes += length;
 	rcv_stats->rx_packets++;
 
-	netif_rx(skb);                                                              // hankai4.2 扔给协议栈
+	netif_rx(skb);                                                              // hankai4.2 竟然直接调用协议栈 接收端函数!
 	return NETDEV_TX_OK;
 
 tx_drop:
