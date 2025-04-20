@@ -343,6 +343,7 @@ void tcp_time_wait(struct sock *sk, int state, int timeo)
 
 		/* Linkage updates. */
 		__inet_twsk_hashdance(tw, sk, &tcp_hashinfo);               // 插入全局包含所有sock的hash表struct inet_hashinfo 
+                                                                    // skb->sk 从sock变成了tw_sock // 0TCP层开始主线 中可看到针对不同sk 的处理
 
 		/* Get the TIME_WAIT timeout firing. */
 		if (timeo < rto)                                            // 定时器时间得大于RTO
