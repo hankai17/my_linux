@@ -167,6 +167,9 @@ static struct sock *inet_lookup_listener_slow(const struct hlist_head *head,
     80  :   127.0.0.1:80,   192.168.78.4:80
     443 :   0.0.0.0:443,    192.168.78.4:443,   192.168.78.1:443
     8443:
+
+    bhash结构(2.6.22 而在3.10中 把lport + lip作为key)
+    80:    owner1(sk):127.0.0.1:80,   owner2(sk):192.168.78.4:80
 */
 #define TCP_LHTABLE_SIZE 32
 struct sock *__inet_lookup_listener(struct inet_hashinfo *hashinfo,         // inet_hashinfo是个全局变量里面维护有 ehash(里面又有两个队列: 非tw 一个是tw) lhash bhash(所有在使用端口的eg:上面)
@@ -311,12 +314,12 @@ int inet_hash_connect(struct inet_timewait_death_row *death_row,                
 			inet_bind_bucket_for_each(tb, node, &head->chain) {                     // 这里的实现 比在 bind里inet_csk_get_port更"精细" 所谓"精细"就是说
                                                                                     //    随机得到的新端口 可能在bind里判断不过 但这里就可以判断过就可以
                                                                                     //    复用这个端口
- 				if (tb->port == port) {
+ 				if (tb->port == port) {                                             // 如果从这个端口桶里 碰找到了一致的端口
  					BUG_TRAP(!hlist_empty(&tb->owners));
  					if (tb->fastreuse >= 0) {
  						goto next_port;
                     }
- 					if (!__inet_check_established(death_row,                        // 如果从这个端口桶里 碰找到了一致的端口
+ 					if (!__inet_check_established(death_row,                        // 如果lport + lip  + dst_ip + dst_port 不在ehash(est/tw表)中
 								      sk, port,
 								      &tw)) {
  						goto ok;
