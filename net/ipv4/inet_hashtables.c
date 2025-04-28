@@ -278,7 +278,7 @@ static inline u32 inet_sk_port_offset(const struct sock *sk)
 /*
  * Bind a port for a connect operation and hash it.
  */
-int inet_hash_connect(struct inet_timewait_death_row *death_row,                    // tw_death_row定义于tcp_minisocks.c中
+int inet_hash_connect(struct inet_timewait_death_row *death_row,                    // tw_death_row定义于tcp_minisocks.c中 // inet_csk_get_port 对比
 		      struct sock *sk)
 {
 	struct inet_hashinfo *hinfo = death_row->hashinfo;                              // 公用全局hashinfo

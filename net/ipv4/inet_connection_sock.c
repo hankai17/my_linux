@@ -69,7 +69,7 @@ EXPORT_SYMBOL_GPL(inet_csk_bind_conflict);
 /* Obtain a reference to a local port for the given sock,
  * if snum is zero it means select any available local port.
  */
-int inet_csk_get_port(struct inet_hashinfo *hashinfo,
+int inet_csk_get_port(struct inet_hashinfo *hashinfo,                               // inet_hash_connect 对比 // https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=90c337da1524863838658078ec34241f45d8394d
 		      struct sock *sk, unsigned short snum,
 		      int (*bind_conflict)(const struct sock *sk,
 					   const struct inet_bind_bucket *tb))
