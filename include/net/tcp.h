@@ -1010,13 +1010,24 @@ static inline int tcp_fin_time(const struct sock *sk)
 
 static inline int tcp_paws_check(const struct tcp_options_received *rx_opt, int rst)    // 返回0成功 返回1检测失败 注意与tcp_paws_discard区别
 {
+<<<<<<< HEAD
 	if ((s32)(rx_opt->rcv_tsval - rx_opt->ts_recent) >= 0)                              // 新时间戳大 或 新来的时间戳小但绕后距离小于2^31 则不拒绝 // ts_recent以时是最近一次更新时间戳时间
 		return 0;
                                                                                         // ---------------------|
                                                                                         //                      \/ 以下场景: 即新来的时间戳小 或者 新来时间小且绕后距离大于2^31 // rfc规定 绕后距离大于2^31则discard
 
 	if (xtime.tv_sec >= rx_opt->ts_recent_stamp + TCP_PAWS_24DAYS)                      // 当前时间(xtime.tv_sec)距离上次收包 超过24天(绕后距离大于2^31) 则检测成功 // 24天把时间戳用溢出了 // 即确实是24天没有收到包
+=======
+	if ((s32)(rx_opt->rcv_tsval - rx_opt->ts_recent) >= 0)                              // 追踪距离小于24天 认为没有问题 // ts_recent以时是最近一次更新时间戳时间
+                                                                                        // a)新时间戳大(且追踪距离小于24天) 即一般场景
+                                                                                        // b)新时间戳小(且追踪距离小于24天) 即溢出的那种
+
+>>>>>>> ba02e51 (add notes for paws)
 		return 0;
+                                                                                        // 当前场景是: 追踪距离 >24天
+	if (xtime.tv_sec >= rx_opt->ts_recent_stamp + TCP_PAWS_24DAYS)                      // 系统当前时间(xtime.tv_sec)距离上次收包时间确实超过24天 则检测成功
+		return 0;
+                                                                                        // 当前场景是: 追踪距离 >24天 且 新的时间戳小 // 即虽然时间戳小 但它不是溢出而来的 它是一个很老的包 而非真正的新包
 
 	/* RST segments are not recommended to carry timestamp,
 	   and, if they do, it is recommended to ignore PAWS because

@@ -2941,6 +2941,7 @@ static int tcp_disordered_ack(const struct sock *sk, const struct sk_buff *skb)
                                                                                                         // 总结起来就是: 一个纯粹的ack包 且ack的正确 
 }
 
+<<<<<<< HEAD
 /*
 int16_t  -128~127
 0 1 1 1    1 1 1 1      127
@@ -2971,12 +2972,19 @@ https://zhuanlan.zhihu.com/p/550031074
 */
 
 static inline int tcp_paws_discard(const struct sock *sk, const struct sk_buff *skb)
+=======
+static inline int tcp_paws_discard(const struct sock *sk, const struct sk_buff *skb)    // 跟 tcp_paws_check 反过来的逻辑一样 // 这里只是时间戳检查 可能有漏网之鱼eg: 时间戳小且追踪距离小于24天 但其实是个老包 所以得配合tcp_sequence判断seq才能更精准
+>>>>>>> ba02e51 (add notes for paws)
 {
 	const struct tcp_sock *tp = tcp_sk(sk);
 	return ((s32)(tp->rx_opt.ts_recent - tp->rx_opt.rcv_tsval) > TCP_PAWS_WINDOW &&     // 已知新时间(rcv_tsval)戳小 时间戳差<重放窗口(1s)也是可以接受的 场景: 乱序重复的ack
 		xtime.tv_sec < tp->rx_opt.ts_recent_stamp + TCP_PAWS_24DAYS &&                  
+<<<<<<< HEAD
 		!tcp_disordered_ack(sk, skb));                                                  // 那么总结起来就是: 新时间戳小且小的离谱 且 距离上次收包小于24天(绕后距离小于2^31) 且 不是ack  就拒绝该包
                                                                                         // 为何没有tcp_paws_check那么宽容?
+=======
+		!tcp_disordered_ack(sk, skb));                                                  // 那么总结起来就是: 新时间戳小且小的离谱 且 追踪距离大于24天(绝对值小于24天) 且 不是ack  就拒绝该包
+>>>>>>> ba02e51 (add notes for paws)
 }
 
 /* Check segment sequence number for validity.
