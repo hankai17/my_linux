@@ -234,10 +234,11 @@ kill:
 	   but not fatal yet.
 	 */
 
+                                                                        // https://www.cnblogs.com/alchemystar/p/13957178.html
 	if (th->syn && !th->rst && !th->ack && !paws_reject &&              // 合法syn: 1)必须是syn 
 	    (after(TCP_SKB_CB(skb)->seq, tcptw->tw_rcv_nxt) ||
 	     (tmp_opt.saw_tstamp &&                                                                               
-	      (s32)(tcptw->tw_ts_recent - tmp_opt.rcv_tsval) < 0))) {       // 合法syn:  2)seq要大于期待的rcv_nxt 或 新来的时间戳大
+	      (s32)(tcptw->tw_ts_recent - tmp_opt.rcv_tsval) < 0))) {       // 合法syn:  2)seq要大于期待的rcv_nxt 或 新来的时间戳大 // eg: 开启timestamp（fullnat不过滤选项），访问不同vip，虽然序号错误，但timestamp能通过PAWS检测，流量正常
 		u32 isn = tcptw->tw_snd_nxt + 65535 + 2;
 		if (isn == 0)
 			isn++;
@@ -246,7 +247,7 @@ kill:
 	}
 
 	if (paws_reject)
-		NET_INC_STATS_BH(LINUX_MIB_PAWSESTABREJECTED);
+		NET_INC_STATS_BH(LINUX_MIB_PAWSESTABREJECTED);                  // netstat -s  "packets rejects in established connections because of timestamp"
 
 	if(!th->rst) {                                                      // 2MSL面试场景
 		/* In this case we must reset the TIMEWAIT timer.

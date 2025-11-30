@@ -1008,6 +1008,7 @@ static inline int tcp_fin_time(const struct sock *sk)
 	return fin_timeout;
 }
 
+// https://fufeixiang.com/2023/09/timeout-time_wait/#%E9%97%AE%E9%A2%98%E5%9C%BA%E6%99%AF%E6%A8%A1%E6%8B%9F
 static inline int tcp_paws_check(const struct tcp_options_received *rx_opt, int rst)    // 返回0成功 返回1检测失败 注意与tcp_paws_discard区别
 {
 	if ((s32)(rx_opt->rcv_tsval - rx_opt->ts_recent) >= 0)                              // 追踪距离小于24天 认为没有问题 // ts_recent以时是最近一次更新时间戳时间

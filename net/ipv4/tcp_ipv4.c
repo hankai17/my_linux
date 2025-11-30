@@ -1406,7 +1406,7 @@ int tcp_v4_conn_request(struct sock *sk, struct sk_buff *skb)               // �
 		 * are made in the function processing timewait state.
 		 */
 		if (tmp_opt.saw_tstamp &&
-		    tcp_death_row.sysctl_tw_recycle &&
+		    tcp_death_row.sysctl_tw_recycle &&                              // https://www.cnblogs.com/alchemystar/p/13444964.html
 		    (dst = inet_csk_route_req(sk, req)) != NULL &&                  // 此乃查req的路由表
 		    (peer = rt_get_peer((struct rtable *)dst)) != NULL &&           // 先看tw定时器 先看定时器tcp_minisocks.c:tcp_time_wait
 		    peer->v4daddr == saddr) {                                       // 如果开启了recycle 且有时间戳且能查到对端的路由信息(危险分子)
@@ -1414,7 +1414,7 @@ int tcp_v4_conn_request(struct sock *sk, struct sk_buff *skb)               // �
 			    (s32)(peer->tcp_ts - req->ts_recent) >                      // 且新来时间戳(这里是ts_recent)小且差值>重放窗口即1s(差的离谱 明显是坏包)        ---------> 代码考虑的是理想环境即时间戳线性增长 nat设备禁用该选项
                                                                             //                              -------------------------------------------也就是说一旦有了nat设备 那么syn包就有可能被抛弃 导致建联建不上  // 知识1.3
 							TCP_PAWS_WINDOW) {
-				NET_INC_STATS_BH(LINUX_MIB_PAWSPASSIVEREJECTED);
+				NET_INC_STATS_BH(LINUX_MIB_PAWSPASSIVEREJECTED);            // netstat -s 看到 "passive connections rejected because of time stamp"
 				dst_release(dst);
 				goto drop_and_free;
 			}
